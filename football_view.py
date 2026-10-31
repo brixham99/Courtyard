@@ -5,6 +5,7 @@ game.App; the rules are in football.py and the scenery in stadium.py."""
 import math
 
 import pygame
+import aa
 
 import football as FB
 import poses
@@ -30,7 +31,7 @@ class FootballView:
         self.posers = app.bd_view.posers
         self.fx = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
         self.shadow = pygame.Surface((30, 15), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.shadow, (12, 22, 14, 150), self.shadow.get_rect())
+        aa.ellipse(self.shadow, (12, 22, 14, 150), self.shadow.get_rect())
         self.rot = {}
         self.sb_font = pygame.font.SysFont("dejavusansmono,dejavusans", 20, bold=True)
         self.sb_small = pygame.font.SysFont("dejavusans", 9, bold=True)
@@ -93,6 +94,15 @@ class FootballView:
         gx, gy = P(r.x, r.y)
         pose = self.pose_for(g, r) if g is not None else None
         s.blit(app.contact, (round(gx - 16), round(gy - 6)))
+        if r.anim == "kick" and r.anim_t < 0.4 and r.slide_t is None and r.dive_t is None:
+            # put your body into it: a quick lunge towards the ball and a puff of turf off the boot
+            fx, fy = FB.FACINGS[r.facing]
+            ex, ey = P(r.x + fx, r.y + fy)
+            ux, uy = ex - gx, ey - gy
+            ln = math.hypot(ux, uy) or 1.0
+            k = r.anim_t / 0.4
+            lunge = math.sin(math.pi * min(1.0, k * 1.6)) * 8
+            gx, gy = gx + ux / ln * lunge, gy + uy / ln * lunge * 0.5
         moving = r.moved > 0
         if pose == "tip":
             ang, lift = self.tip_angle(r)
@@ -113,15 +123,30 @@ class FootballView:
             x0, y0 = round(gx - ax), round(gy - ay - bob)
             s.blit(img, (x0, y0))
             return pygame.Rect(x0, y0, img.get_width(), img.get_height())
-        aa, ao, crouch = pose
+        a_ang, ao, crouch = pose
         p = self.posers[r.kind]
         act = 1 if poses.FORWARD[key] > 0 else 0
         angs = [0, 0]
-        angs[act] = aa
+        angs[act] = a_ang
         angs[1 - act] = ao
         p.draw(s, key, (gx, gy), ch.anchor[key], angs[0], angs[1], crouch)
         ax, ay = ch.anchor[key]
         return pygame.Rect(round(gx - ax), round(gy - ay), img.get_width(), img.get_height())
+
+    def draw_turf(self, s, x, y, at, seed):
+        """Bits of turf and dust flicked up by a kick (for the first third of a second)."""
+        if at > 0.34:
+            return
+        k = at / 0.34
+        rise = math.sin(math.pi * k)
+        for i in range(10):
+            a = math.pi * (0.1 + 0.8 * ((i * 37 + seed * 11) % 97) / 97)
+            v = 30 + (i * 13 % 23)
+            px = x + math.cos(a) * v * (0.4 + 0.6 * k)
+            py = y - math.sin(a) * v * 0.6 * rise
+            col = (190, 224, 120) if i % 3 else (146, 110, 66)
+            rad = 3.6 * (1 - k) + 1.4
+            aa.circle(s, col, (px, py), rad)
 
     # ------------------------------------------------------------ the ball
     def draw_ball_at(self, s, x, y, spin, r=8):
@@ -129,22 +154,22 @@ class FootballView:
         d = 2 * r + 2
         b = pygame.Surface((d, d), pygame.SRCALPHA)
         c = (r + 1, r + 1)
-        pygame.draw.circle(b, WHITE, c, r)
-        pygame.draw.circle(b, (214, 218, 226), (c[0] + 2, c[1] + 2), r - 1)
-        pygame.draw.circle(b, WHITE, (c[0] - 1, c[1] - 1), r - 2)
+        aa.circle(b, WHITE, c, r)
+        aa.circle(b, (214, 218, 226), (c[0] + 2, c[1] + 2), r - 1)
+        aa.circle(b, WHITE, (c[0] - 1, c[1] - 1), r - 2)
         # the panels: one roughly facing us (drifting with the spin), five round the rim
         ox, oy = math.cos(spin) * r * 0.32, math.sin(spin * 0.8) * r * 0.25
         def pent(px, py, rad, rot):
             return [(px + rad * math.cos(rot + i * 2 * math.pi / 5), py + rad * math.sin(rot + i * 2 * math.pi / 5)) for i in range(5)]
-        pygame.draw.polygon(b, PATCH, pent(c[0] + ox, c[1] + oy, r * 0.36, spin))
+        aa.polygon(b, PATCH, pent(c[0] + ox, c[1] + oy, r * 0.36, spin))
         for i in range(5):
             a = spin + i * 2 * math.pi / 5
-            pygame.draw.polygon(b, PATCH, pent(c[0] + ox + math.cos(a) * r * 0.95, c[1] + oy + math.sin(a) * r * 0.95, r * 0.3, a))
+            aa.polygon(b, PATCH, pent(c[0] + ox + math.cos(a) * r * 0.95, c[1] + oy + math.sin(a) * r * 0.95, r * 0.3, a))
         mask = pygame.Surface((d, d), pygame.SRCALPHA)
-        pygame.draw.circle(mask, (255, 255, 255, 255), c, r)
+        aa.circle(mask, (255, 255, 255, 255), c, r)
         b.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-        pygame.draw.circle(b, (90, 96, 110), c, r, 1)
-        pygame.draw.circle(b, (255, 255, 255), (c[0] - 3, c[1] - 3), 2)
+        aa.circle(b, (90, 96, 110), c, r, 1)
+        aa.circle(b, (255, 255, 255), (c[0] - 3, c[1] - 3), 2)
         s.blit(b, (x - r - 1, y - r - 1))
 
     def draw_ball(self, s, g):
@@ -175,11 +200,11 @@ class FootballView:
         for i in range(nu + 1):
             u = i / nu
             pts = [fn(u, j / 8) for j in range(9)]
-            pygame.draw.lines(f, col, False, pts, w)
+            aa.lines(f, col, False, pts, w)
         for j in range(nv + 1):
             v = j / nv
             pts = [fn(i / 10, v) for i in range(11)]
-            pygame.draw.lines(f, col, False, pts, w)
+            aa.lines(f, col, False, pts, w)
 
     def net_part(self, s, gl, part):
         f = self.fx
@@ -208,13 +233,13 @@ class FootballView:
         # the back frame: thin grey tubes
         if part == "back":
             for y in (y0, y1):
-                pygame.draw.line(s, FRAME, P(xb, y, 0), P(xb, y, BAR), 2)
-            pygame.draw.line(s, FRAME, P(xb, y0, BAR), P(xb, y1, BAR), 2)
-            pygame.draw.line(s, shade(FRAME, 0.8), P(xb, y0, 0), P(xb, y1, 0), 2)
+                aa.line(s, FRAME, P(xb, y, 0), P(xb, y, BAR), 2)
+            aa.line(s, FRAME, P(xb, y0, BAR), P(xb, y1, BAR), 2)
+            aa.line(s, shade(FRAME, 0.8), P(xb, y0, 0), P(xb, y1, 0), 2)
         elif part in ("side0", "side1"):
             y = y0 if part == "side0" else y1
-            pygame.draw.line(s, FRAME, P(x0, y, BAR), P(xb, y, BAR), 2)
-            pygame.draw.line(s, shade(FRAME, 0.8), P(x0, y, 0), P(xb, y, 0), 2)
+            aa.line(s, FRAME, P(x0, y, BAR), P(xb, y, BAR), 2)
+            aa.line(s, shade(FRAME, 0.8), P(x0, y, 0), P(xb, y, 0), 2)
 
     def frame(self, s, gl):
         """The posts and crossbar on the goal line: white, round, with a shaded side."""
@@ -225,10 +250,10 @@ class FootballView:
             x, yy = P(gl.x, y, z)
             return (x + dx, yy)
         for y in (y0, y1):
-            pygame.draw.line(s, (150, 156, 166), Q(y, 0), Q(y, BAR), 7)
-            pygame.draw.line(s, WHITE, (Q(y, 0)[0] - 1, Q(y, 0)[1]), (Q(y, BAR)[0] - 1, Q(y, BAR)[1]), 5)
-        pygame.draw.line(s, (150, 156, 166), Q(y0, BAR + 1), Q(y1, BAR + 1), 7)
-        pygame.draw.line(s, WHITE, Q(y0, BAR + 2), Q(y1, BAR + 2), 4)
+            aa.line(s, (150, 156, 166), Q(y, 0), Q(y, BAR), 7)
+            aa.line(s, WHITE, (Q(y, 0)[0] - 1, Q(y, 0)[1]), (Q(y, BAR)[0] - 1, Q(y, BAR)[1]), 5)
+        aa.line(s, (150, 156, 166), Q(y0, BAR + 1), Q(y1, BAR + 1), 7)
+        aa.line(s, WHITE, Q(y0, BAR + 2), Q(y1, BAR + 2), 4)
 
     def draw_goal(self, s, g, gl, ball_inside):
         if gl.side > 0:
@@ -307,13 +332,39 @@ class FootballView:
                     rects[id(o)] = self.draw_player(s, g, o)
                 else:
                     self.draw_ball(s, g)
+            for r in g.runners:
+                if r.anim == "kick" and r.anim_t < 0.4 and r.slide_t is None and r.dive_t is None:
+                    fx, fy = FB.FACINGS[r.facing]
+                    tx, ty = P(r.x + fx * 0.3, r.y + fy * 0.3)
+                    self.draw_turf(s, tx, ty, r.anim_t, r.kind == "robot")
         s.blit(sc["front"], (0, 0))
         self.draw_goal(s, g, near, g is not None and inside is near)
         if g is not None and g.state != "match_over":
             self.draw_goal_labels(s, g)
             if g.state == "play":
                 self.draw_you(s, g, rects, t)
+                self.draw_aim(s, g, t)
         return rects
+
+    def draw_aim(self, s, g, t):
+        """While you charge a shot: a target on the goal line where it's going (Left/Right move it)."""
+        r = g.p1
+        if r.ai or not r.charging or getattr(r, "aim_y", None) is None:
+            return
+        gl = r.goal
+        y = r.aim_y
+        pulse = 1.0 + 0.12 * math.sin(t * 10)
+        # a flat ring on the grass (a circle seen at 2:1), a dot and a stalk up to a chevron at the bar
+        cx, cy = P(gl.x, y, 0)
+        rw, rh = 15 * pulse, 7.5 * pulse
+        aa.ellipse(s, (20, 24, 40), (cx - rw - 1, cy - rh + 1, 2 * rw + 2, 2 * rh + 2), 3)
+        aa.ellipse(s, (255, 220, 70), (cx - rw, cy - rh, 2 * rw, 2 * rh), 3)
+        aa.circle(s, (255, 220, 70), (cx, cy), 3)
+        top = P(gl.x, y, BAR + 12)
+        aa.line(s, (255, 236, 150), (cx, cy - rh), (top[0], top[1] + 8), 1)
+        x, yy = top
+        aa.polygon(s, (20, 24, 40), [(x - 10, yy - 2), (x + 10, yy - 2), (x, yy + 10)])
+        aa.polygon(s, (255, 220, 70), [(x - 8, yy - 1), (x + 8, yy - 1), (x, yy + 8)])
 
     def draw_goal_labels(self, s, g):
         app = self.app
@@ -341,15 +392,15 @@ class FootballView:
         rc = rects[id(r)]
         x = rc.centerx
         y = max(rc.top - 10, 90) + math.sin(t * 5) * 2
-        pygame.draw.polygon(s, (20, 24, 40), [(x - 9, y - 11), (x + 9, y - 11), (x, y + 1)])
-        pygame.draw.polygon(s, (255, 220, 80), [(x - 7, y - 10), (x + 7, y - 10), (x, y - 1)])
+        aa.polygon(s, (20, 24, 40), [(x - 9, y - 11), (x + 9, y - 11), (x, y + 1)])
+        aa.polygon(s, (255, 220, 80), [(x - 7, y - 10), (x + 7, y - 10), (x, y - 1)])
 
     # ------------------------------------------------------------ the HUD
     def draw_hud(self, s, g, t):
         app = self.app
         bd = app.bd_view
         bar = pygame.Rect(10, 8, WIN_W - 20, 66)
-        app.panel(s, bar, alpha=190)
+        app.panel(s, bar, alpha=228)
         for side, r in ((0, g.p1), (1, g.p2)):
             por = app.portrait(r.kind, 54)
             label = r.name + (" (you)" if not r.ai else "")
@@ -387,7 +438,7 @@ class FootballView:
             if w is None:
                 head, sub = f"A draw, {sc}!", "Nothing in it. Have another go."
             elif not g.p1.ai and w is g.p1:
-                head, sub = f"{w.name} wins {sc}!", "What a finish! The robot wants a rematch."
+                head, sub = f"{w.name} wins {sc}!", "What a finish! The Robot wants a rematch."
             elif not g.p1.ai:
                 head, sub = f"The {w.name} wins {sc}", "So close! Have another go."
             else:
@@ -426,7 +477,8 @@ class FootballView:
                 msg = "Loose ball!"
             col = (40, 100, 190)
         elif g.holder is h:
-            msg = "Your ball: hold Space and let go in the green to shoot"
+            msg = ("Left/Right to aim  ·  let go of Space in the green" if h.charging
+                   else "Your ball: hold Space and let go in the green to shoot")
             col = (200, 110, 30)
             meter = True
         elif g.ball.shot_by is h:

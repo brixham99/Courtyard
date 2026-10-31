@@ -53,6 +53,7 @@ BLOCK_R = 0.75
 BLOCK_CHANCE = 0.75
 DRIBBLE_K = 0.92        # dribbling is a little slower than running
 SWIPE_COOL = 0.75
+BODY_SEP = 0.70         # players' centres stay this far apart (the sprites are about a tile wide)
 
 
 class Hoop:
@@ -652,6 +653,7 @@ class BasketballGame:
             if r.jump_t is not None:
                 move = 0
             self.drive(r, turn, move, dt)
+        self.separate(dt)
         # the dribble
         h = self.holder
         if h is not None:
@@ -667,6 +669,20 @@ class BasketballGame:
             self.step_ball(dt)
             self.check_block()
             self.check_pickup(dt)
+
+    def separate(self, dt):
+        """Ease the two players apart if they've ended up overlapping (after a jump, a landing or a take)."""
+        a, o = self.p1, self.p2
+        dx, dy = a.x - o.x, a.y - o.y
+        d = math.hypot(dx, dy)
+        if d >= BODY_SEP:
+            return
+        if d < 1e-6:
+            dx, dy, d = 1.0, 0.0, 1.0
+        push = min(BODY_SEP - d, 2.5 * dt) / 2
+        ux, uy = dx / d, dy / d
+        a.x, a.y = self.world.resolve(a.x + ux * push, a.y + uy * push)
+        o.x, o.y = self.world.resolve(o.x - ux * push, o.y - uy * push)
 
     def step_ball(self, dt):
         b = self.ball
@@ -822,8 +838,8 @@ class BasketballGame:
             o = self.other(r)
             ddx, ddy = nx - o.x, ny - o.y
             d = math.hypot(ddx, ddy)
-            if d < 2 * RADIUS and d > 1e-6:
-                nx, ny = o.x + ddx / d * 2 * RADIUS, o.y + ddy / d * 2 * RADIUS
+            if d < BODY_SEP and d > 1e-6:
+                nx, ny = o.x + ddx / d * BODY_SEP, o.y + ddy / d * BODY_SEP
                 nx, ny = self.world.resolve(nx, ny)
             r.x, r.y = nx, ny
             r.moved = math.hypot(nx - ox, ny - oy)

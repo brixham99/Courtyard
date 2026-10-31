@@ -53,6 +53,8 @@ BODY_R = 0.38
 REACH_Z = 2.3                    # a keeper's reach, standing
 DIVE_REACH = 0.62                # arms out in a dive
 DRIBBLE_K = 0.9
+AIM_V = 3.0                      # how fast Left/Right slide your aim along the goal mouth while charging (tiles/s)
+AIM_EDGE = 0.35                  # the aim stays this far inside the posts
 
 
 class Goal:
@@ -446,6 +448,7 @@ class FootballGame:
             r.charging = False
             r.power_t = 0.0
             r.power = 0.0
+            r.aim_y = None
             r.touch = 0.0
             if r.ai:
                 r.brain = Brain(r, self.rng)
@@ -542,6 +545,8 @@ class FootballGame:
         r.power_t = 0.0
         r.power = 0.0
         r.facing = facing_for(r.goal.x - r.x, r.goal.cy - r.y)
+        # you can steer your shot with Left/Right while charging; it starts where the game would aim
+        r.aim_y = None if r.ai else min(max(self.aim_point(r)[1], GOAL_Y0 + AIM_EDGE), GOAL_Y1 - AIM_EDGE)
         r.anim, r.anim_t = "set", 0.0
         self.events.append(("set", r))
 
@@ -562,7 +567,11 @@ class FootballGame:
         gl = r.goal
         o = self.other(r)
         bx, by, bz = self.foot_pos(r)
-        tx, ty = self.aim_point(r)
+        if getattr(r, "aim_y", None) is not None:
+            tx, ty = gl.x, r.aim_y
+        else:
+            tx, ty = self.aim_point(r)
+        r.aim_y = None
         d = math.hypot(tx - bx, ty - by)
         e = r.power - ideal_power(math.hypot(gl.x - r.x, gl.cy - r.y))
         # pace: harder with more power
@@ -714,6 +723,9 @@ class FootballGame:
             if r.charging:
                 r.power_t += dt
                 r.power = power_at(r.power_t)
+                if r.aim_y is not None and turn:
+                    # screen left is +y on both goal lines, so Left (-1) slides the aim towards +y
+                    r.aim_y = min(max(r.aim_y - turn * AIM_V * dt, GOAL_Y0 + AIM_EDGE), GOAL_Y1 - AIM_EDGE)
                 turn, move = 0, 0
             if r.slide_t is not None or r.dive_t is not None or r.down_t > 0:
                 self.step_moves(r, dt)

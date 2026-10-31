@@ -6,6 +6,7 @@ One tile is TILE_W x TILE_H = 64 x 32 px (strict 2:1). The sun is in the east
 the screen left, as in Moon Sweeper.
 """
 import pygame
+import aa
 
 WIN_W, WIN_H = 1280, 720
 TILE_W, TILE_H = 64, 32
@@ -28,7 +29,7 @@ def mix(a, b, t):
 
 
 def poly(s, col, pts, width=0):
-    pygame.draw.polygon(s, col, [(round(px), round(py)) for px, py in pts], width)
+    aa.polygon(s, col, [(round(px), round(py)) for px, py in pts], width)
 
 
 def quad_x(x, y0, y1, z0, z1):

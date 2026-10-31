@@ -32,12 +32,14 @@ Football:           run into the ball to dribble; hold Space and let go with the
 import json
 import math
 import os
+import random
 import subprocess
 import sys
 import wave
 
 import numpy as np
 import pygame
+import aa
 
 import basketball
 import basketball_view
@@ -60,9 +62,10 @@ GAMES = (("Tag", True), ("Football", True), ("Basketball", True), ("Batdown", Tr
 TURN_KEYS = {pygame.K_LEFT: -1, pygame.K_a: -1, pygame.K_RIGHT: 1, pygame.K_d: 1}
 MOVE_KEYS = {pygame.K_UP: 1, pygame.K_w: 1, pygame.K_DOWN: -1, pygame.K_s: -1}
 GO_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE)
-SOUND_VOL = {"whistle": 0.6, "whistle_long": 0.6, "slap": 0.8, "boing": 0.5, "beep": 0.35, "beep_hi": 0.4,
+# balanced by ear-loudness (RMS): the whistle and the robot's square-wave beeps sat ~6-10 dB above the rest
+SOUND_VOL = {"whistle": 0.32, "whistle_long": 0.32, "slap": 0.8, "boing": 0.5, "beep": 0.25, "beep_hi": 0.28,
              "step1": 0.2, "step2": 0.2, "step3": 0.2, "rstep1": 0.22, "rstep2": 0.22, "rstep3": 0.22,
-             "robot_happy": 0.45, "robot_sad": 0.45, "cheer": 0.55,
+             "robot_happy": 0.3, "robot_sad": 0.3, "cheer": 0.7,
              "thock": 0.75, "clatter": 0.7, "pock": 0.35,
              "bounce": 0.5, "swish": 0.75, "clank": 0.55, "backboard": 0.6,
              "kick": 0.7, "post": 0.6, "net": 0.6, "board": 0.5, "crowd_cheer": 0.5, "crowd_groan": 0.45}
@@ -219,7 +222,7 @@ class App:
         self.front = scene.build_front()
         self.tree_art = scene.TreeArt()
         self.contact = pygame.Surface((32, 12), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.contact, (20, 22, 14, 90), self.contact.get_rect())
+        aa.ellipse(self.contact, (20, 22, 14, 90), self.contact.get_rect())
         self.chars = {k: Character(k) for k in ("archie", "holly", "robot")}
         self.scenes = {}
         self.bd_view = batdown_view.BatdownView(self)
@@ -280,6 +283,7 @@ class App:
         self.state = "play"
         self.sound.set_track("game")
         self.step_phase = {}
+        self.confetti_t0 = None
         self.held_turn, self.held_move = [], []
 
     def human_controls(self):
@@ -355,6 +359,8 @@ class App:
         if self.state != "play":
             return
         g = self.game
+        if g.state == "match_over" and getattr(self, "confetti_t0", None) is None and self.player_won(g):
+            self.confetti_t0 = self.t
         if self.is_bd:
             self.update_bd(dt)
             return
@@ -384,6 +390,8 @@ class App:
             elif kind == "match_over":
                 if g.p1.kind != "robot" and data == 0:
                     self.sound.play("cheer")
+                else:
+                    self.sound.play("robot_happy")
         g.events.clear()
         # countdown pips for whoever is counting to 3
         for r in g.runners:
@@ -563,7 +571,9 @@ class App:
                 snd("whistle_long")
                 if football.CROWD:
                     snd("crowd_cheer", 0.8)
-                if data is not None and data.kind == "robot":
+                if data is not None and data.kind != "robot" and not data.ai:
+                    snd("cheer")
+                elif data is not None and data.kind == "robot":
                     snd("robot_happy")
         g.events.clear()
         for r in g.runners:
@@ -673,22 +683,22 @@ class App:
             pygame.draw.rect(s, (220, 40, 44), box, border_radius=8)
             pygame.draw.rect(s, (255, 220, 200), box, 2, border_radius=8)
             s.blit(lab, (box.x + 8, box.y + 1))
-            pygame.draw.polygon(s, (220, 40, 44), [(cx - 7, box.bottom), (cx + 7, box.bottom), (cx, box.bottom + 8)])
+            aa.polygon(s, (220, 40, 44), [(cx - 7, box.bottom), (cx + 7, box.bottom), (cx, box.bottom + 8)])
             badge_y = box.centery
         if r.frozen > 0 and g.state == "playing":
             n = math.ceil(r.frozen / 0.5)
             frac = (r.frozen % 0.5) / 0.5
             c = (cx + 44, badge_y)
-            pygame.draw.circle(s, (255, 255, 255), c, 16)
-            pygame.draw.circle(s, (40, 40, 60), c, 16, 2)
+            aa.circle(s, (255, 255, 255), c, 16)
+            aa.circle(s, (40, 40, 60), c, 16, 2)
             if frac > 0:
-                pygame.draw.arc(s, (230, 60, 60), (c[0] - 16, c[1] - 16, 32, 32), math.pi / 2, math.pi / 2 + 2 * math.pi * frac, 4)
+                aa.arc(s, (230, 60, 60), (c[0] - 16, c[1] - 16, 32, 32), math.pi / 2, math.pi / 2 + 2 * math.pi * frac, 4)
             lab = self.f_hud.render(str(min(3, n)), True, (40, 40, 60))
             s.blit(lab, lab.get_rect(center=c))
         if r.immune > 0 and g.state == "playing":
             # safe from a tag-back: a green ring round the feet with a little label
             gx, gy = P(r.x, r.y)
-            pygame.draw.ellipse(s, (90, 220, 90), (gx - 22, gy - 8, 44, 16), 3)
+            aa.ellipse(s, (90, 220, 90), (gx - 22, gy - 8, 44, 16), 3)
             lab = self.f_tiny.render("Safe!", True, (20, 90, 20))
             bg = pygame.Rect(0, 0, lab.get_width() + 8, lab.get_height())
             bg.midtop = (gx, gy + 9)
@@ -707,8 +717,8 @@ class App:
             pts.append((gx + math.cos(a) * rr * 1.3, gy + math.sin(a) * rr))
         alpha = 255 if age < 0.5 else int(255 * (1 - (age - 0.5) / 0.3))
         surf = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
-        pygame.draw.polygon(surf, (255, 222, 60, alpha), pts)
-        pygame.draw.polygon(surf, (200, 60, 30, alpha), pts, 3)
+        aa.polygon(surf, (255, 222, 60, alpha), pts)
+        aa.polygon(surf, (200, 60, 30, alpha), pts, 3)
         lab = self.f_mid.render("TAG!", True, (190, 30, 30))
         lab.set_alpha(alpha)
         surf.blit(lab, lab.get_rect(center=(gx, gy)))
@@ -750,12 +760,12 @@ class App:
                 pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
             filled = (i < won) if not right else (i < won)
             if filled:
-                pygame.draw.polygon(s, (255, 210, 70), pts)
-            pygame.draw.polygon(s, (255, 210, 70), pts, 2)
+                aa.polygon(s, (255, 210, 70), pts)
+            aa.polygon(s, (255, 210, 70), pts, 2)
 
     def draw_hud(self, s, g):
         bar = pygame.Rect(10, 8, WIN_W - 20, 66)
-        self.panel(s, bar, alpha=190)
+        self.panel(s, bar, alpha=228)
         for side, r in ((0, g.p1), (1, g.p2)):
             por = self.portrait(r.kind, 54)
             label = r.name + (" (you)" if not r.ai else "")
@@ -813,7 +823,7 @@ class App:
             score = f"{max(g.wins)}–{min(g.wins)}"
             if not g.p1.ai and wi == 0:
                 head = f"{w.name} wins the match {score}!"
-                sub = "Well played! The robot wants a rematch."
+                sub = "Well played! The Robot wants a rematch."
             elif not g.p1.ai:
                 head = f"The {w.name} wins {score}"
                 sub = "So close! Have another go."
@@ -897,7 +907,7 @@ class App:
         shade_s = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
         for y in range(WIN_H):
             a = int(170 - 90 * math.sin(min(1, y / WIN_H) * math.pi))
-            pygame.draw.line(shade_s, (10, 14, 30, a), (0, y), (WIN_W, y))
+            aa.line(shade_s, (10, 14, 30, a), (0, y), (WIN_W, y))
         s.blit(shade_s, (0, 0))
         # logo
         title = "COURTYARD"
@@ -1003,21 +1013,66 @@ class App:
             self._rules_fonts[size] = load_font(size)
         return self._rules_fonts[size]
 
+    @staticmethod
+    def player_won(g):
+        """Did Archie or Holly (player one) win the match?"""
+        if g.p1.kind == "robot":
+            return False
+        if hasattr(g, "wins"):                  # Tag: best of three rounds
+            return g.wins[0] > g.wins[1]
+        return getattr(g, "winner", None) is g.p1
+
+    CONFETTI = ((236, 64, 72), (255, 196, 40), (64, 170, 240), (90, 200, 100), (250, 250, 250), (255, 120, 200))
+
+    def draw_confetti(self, s):
+        """A shower of paper confetti when you beat the Robot (about 8 seconds)."""
+        t0 = getattr(self, "confetti_t0", None)
+        if t0 is None or self.state != "play" or self.game.state != "match_over":
+            return
+        el = self.t - t0
+        if el > 9.0:
+            return
+        rng = random.Random(7)
+        for i in range(160):
+            delay = rng.uniform(0, 4.0)
+            x0 = rng.uniform(-20, WIN_W + 20)
+            v = rng.uniform(120, 230)
+            amp, fq, ph = rng.uniform(8, 26), rng.uniform(1.2, 2.6), rng.uniform(0, 6.3)
+            spin, rot = rng.uniform(4, 9), rng.uniform(0, 3.14)
+            col = self.CONFETTI[i % len(self.CONFETTI)]
+            tt = el - delay
+            if tt < 0:
+                continue
+            y = -16 + v * tt
+            if y > WIN_H + 16:
+                continue
+            x = x0 + amp * math.sin(fq * tt + ph)
+            a = rot + 1.3 * math.sin(fq * tt + ph)
+            hw = 6 * abs(math.cos(spin * tt)) + 0.9          # flipping over as it falls
+            hh = 4.0
+            ca, sa = math.cos(a), math.sin(a)
+            pts = [(x + ca * dx - sa * dy, y + sa * dx + ca * dy) for dx, dy in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))]
+            aa.polygon(s, shade(col, 0.75 + 0.25 * abs(math.cos(spin * tt))), pts)
+
     def draw(self):
         s = self.screen
         if self.state == "title":
             self.draw_title(s, self.t)
         elif self.is_bd:
             self.bd_view.draw_world(s, self.game, self.t)
+            self.draw_confetti(s)
             self.bd_view.draw_hud(s, self.game, self.t)
         elif self.is_bb:
             self.bb_view.draw_world(s, self.game, self.t)
+            self.draw_confetti(s)
             self.bb_view.draw_hud(s, self.game, self.t)
         elif self.is_fb:
             self.fb_view.draw_world(s, self.game, self.t)
+            self.draw_confetti(s)
             self.fb_view.draw_hud(s, self.game, self.t)
         else:
             self.draw_world(s, self.game.runners, self.t, self.game)
+            self.draw_confetti(s)
             self.draw_hud(s, self.game)
 
     # -------------------------------------------------------------- main loop

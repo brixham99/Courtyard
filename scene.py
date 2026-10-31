@@ -15,6 +15,7 @@ import math
 import os
 import random
 import pygame
+import aa
 
 from iso import (WIN_W, WIN_H, TILE_W, HW, HH, N, P, shade, mix, poly, quad_x, quad_y, quad_z, box, SHADOW_K)
 
@@ -53,8 +54,8 @@ def window_x(s, x, ya, yb, za, zb, frame=(240, 238, 228), glass=(70, 96, 120)):
     poly(s, glass, quad_x(x, ya, yb, za, zb))
     ym = (ya + yb) / 2
     zm = (za + zb) / 2
-    pygame.draw.line(s, frame, P(x, ya, zm), P(x, yb, zm), 2)
-    pygame.draw.line(s, frame, P(x, ym, za), P(x, ym, zb), 1)
+    aa.line(s, frame, P(x, ya, zm), P(x, yb, zm), 2)
+    aa.line(s, frame, P(x, ym, za), P(x, ym, zb), 1)
     poly(s, frame, quad_x(x, ya, yb, za, zb), 2)
     # sky reflected in the top corner
     poly(s, (150, 190, 215), [P(x, ya + 0.05, zb - 3), P(x, ya + (yb - ya) * 0.4, zb - 3), P(x, ya + 0.05, zb - 14)])
@@ -65,8 +66,8 @@ def window_y(s, y, xa, xb, za, zb, frame=(240, 238, 228), glass=(56, 78, 100)):
     poly(s, glass, quad_y(y, xa, xb, za, zb))
     xm = (xa + xb) / 2
     zm = (za + zb) / 2
-    pygame.draw.line(s, frame, P(xa, y, zm), P(xb, y, zm), 2)
-    pygame.draw.line(s, frame, P(xm, y, za), P(xm, y, zb), 1)
+    aa.line(s, frame, P(xa, y, zm), P(xb, y, zm), 2)
+    aa.line(s, frame, P(xm, y, za), P(xm, y, zb), 1)
     poly(s, frame, quad_y(y, xa, xb, za, zb), 2)
     poly(s, (130, 168, 196), [P(xa + 0.05, y, zb - 3), P(xa + (xb - xa) * 0.4, y, zb - 3), P(xa + 0.05, y, zb - 14)])
 
@@ -85,7 +86,7 @@ def bricks_x(s, x, y0, y1, z0, z1, col, rng):
             k = rng.uniform(0.9, 1.08)
             poly(s, shade(col, k), quad_x(x, yy, yb, z, zt - 1))
             yy = yb
-        pygame.draw.line(s, shade(MORTAR, 0.9), P(x, y0, zt - 0.5), P(x, y1, zt - 0.5), 1)
+        aa.line(s, shade(MORTAR, 0.9), P(x, y0, zt - 0.5), P(x, y1, zt - 0.5), 1)
         z = zt
         row += 1
 
@@ -103,7 +104,7 @@ def bricks_y(s, y, x0, x1, z0, z1, col, rng):
             k = rng.uniform(0.9, 1.08)
             poly(s, shade(col, k), quad_y(y, xx, xb, z, zt - 1))
             xx = xb
-        pygame.draw.line(s, shade(MORTAR, 0.66), P(x0, y, zt - 0.5), P(x1, y, zt - 0.5), 1)
+        aa.line(s, shade(MORTAR, 0.66), P(x0, y, zt - 0.5), P(x1, y, zt - 0.5), 1)
         z = zt
         row += 1
 
@@ -115,19 +116,25 @@ def clock_face(s, plane, a, b, z, r_tiles, r_z):
         t = 2 * math.pi * i / 40
         u, v = math.cos(t) * r_tiles, math.sin(t) * r_z
         pts.append(P(a, b + u, z + v) if plane == "x" else P(b + u, a, z + v))
+    # Rim as a slightly larger dark disc under the face: smoother than a
+    # thick outline, which leaves little bumps at every corner.
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    rmin = min(math.hypot(p[0] - cx, p[1] - cy) for p in pts)
+    k = 1 + 2.0 / max(rmin, 1)
+    poly(s, (40, 36, 30), [(cx + (x - cx) * k, cy + (y - cy) * k) for x, y in pts])
     poly(s, (246, 242, 226), pts)
-    poly(s, (40, 36, 30), pts, 2)
     for i in range(12):
         t = 2 * math.pi * i / 12
         u, v = math.cos(t) * r_tiles * 0.82, math.sin(t) * r_z * 0.82
         p = P(a, b + u, z + v) if plane == "x" else P(b + u, a, z + v)
-        pygame.draw.circle(s, (40, 36, 30), (round(p[0]), round(p[1])), 1)
+        aa.circle(s, (40, 36, 30), (round(p[0]), round(p[1])), 1)
     c = P(a, b, z) if plane == "x" else P(b, a, z)
     # ten past ten, the classic shop-window time
     for ang, ln in ((math.radians(-60), 0.5), (math.radians(150 - 180), 0.75)):
         u, v = math.cos(ang) * r_tiles * ln, math.sin(ang) * r_z * ln
         p = P(a, b + u, z + v) if plane == "x" else P(b + u, a, z + v)
-        pygame.draw.line(s, (30, 26, 22), c, p, 2)
+        aa.line(s, (30, 26, 22), c, p, 2)
 
 
 def tree_surface(seed, r=58):
@@ -143,12 +150,12 @@ def tree_surface(seed, r=58):
         px, py = cx + math.cos(a) * d, cy + math.sin(a) * d * 0.85
         rr = rng.uniform(r * 0.18, r * 0.32)
         light = 0.75 + 0.45 * ((px - cx) / r + 1) / 2 - 0.25 * ((py - cy) / r)
-        pygame.draw.circle(surf, shade(base, light * rng.uniform(0.9, 1.05)), (round(px), round(py)), round(rr))
+        aa.circle(surf, shade(base, light * rng.uniform(0.9, 1.05)), (round(px), round(py)), round(rr))
     for i in range(40):
         a = rng.uniform(-1.2, 0.6)
         d = rng.uniform(0.3, 0.8) * r
         px, py = cx + math.cos(a) * d * 0.9, cy + math.sin(a) * d * 0.7
-        pygame.draw.circle(surf, (128, 178, 84), (round(px), round(py)), rng.randint(3, 7))
+        aa.circle(surf, (128, 178, 84), (round(px), round(py)), rng.randint(3, 7))
     return surf
 
 
@@ -156,7 +163,7 @@ def draw_tree(s, x, y, seed, r=58, trunk_h=70):
     """A free-standing tree outside the courtyard: shadow, trunk, canopy."""
     gx, gy = P(x, y)
     sh = pygame.Surface((int(r * 3), int(r * 1.2)), pygame.SRCALPHA)
-    pygame.draw.ellipse(sh, (20, 40, 10, 80), sh.get_rect())
+    aa.ellipse(sh, (20, 40, 10, 80), sh.get_rect())
     s.blit(sh, (gx - sh.get_width() + 30 - trunk_h * SHADOW_K * 0.6, gy - sh.get_height() / 2))
     pygame.draw.rect(s, (92, 66, 44), (gx - 5, gy - trunk_h, 10, trunk_h))
     pygame.draw.rect(s, (120, 90, 60), (gx + 1, gy - trunk_h, 4, trunk_h))
@@ -181,11 +188,11 @@ def draw_floor(s, rng):
     # four square (white) near the far wall
     W = (240, 240, 236)
     poly(s, W, quad_z(5.0, 0.8, 9.0, 2.8, 0), 2)
-    pygame.draw.line(s, W, P(7.0, 0.8), P(7.0, 2.8), 2)
-    pygame.draw.line(s, W, P(5.0, 1.8), P(9.0, 1.8), 2)
+    aa.line(s, W, P(7.0, 0.8), P(7.0, 2.8), 2)
+    aa.line(s, W, P(5.0, 1.8), P(9.0, 1.8), 2)
     # a big white circle round the tree, and a wiggly blue snake
     pts = [P(7 + 2.6 * math.cos(t), 7 + 2.6 * math.sin(t)) for t in [i * 2 * math.pi / 64 for i in range(64)]]
-    pygame.draw.lines(s, W, True, pts, 2)
+    aa.lines(s, W, True, pts, 2)
 
 
 def draw_back_walls(s, rng):
@@ -225,11 +232,11 @@ def build_front():
     for k in range(0, N * 4 + 1):
         u = k / 4
         for p0, p1 in ((P(N + 0.09, u, plinth), P(N + 0.09, u, H)), (P(u, N + 0.09, plinth), P(u, N + 0.09, H))):
-            pygame.draw.line(s, IRON, p0, p1, 2)
-            pygame.draw.polygon(s, IRON, [(p1[0] - 2, p1[1] + 1), (p1[0] + 2, p1[1] + 1), (p1[0], p1[1] - 4)])
+            aa.line(s, IRON, p0, p1, 2)
+            aa.polygon(s, IRON, [(p1[0] - 2, p1[1] + 1), (p1[0] + 2, p1[1] + 1), (p1[0], p1[1] - 4)])
     for z in (plinth + 4, H - 4):
-        pygame.draw.line(s, IRON, P(N + 0.09, 0, z), P(N + 0.09, N + 0.09, z), 2)
-        pygame.draw.line(s, IRON, P(0, N + 0.09, z), P(N + 0.09, N + 0.09, z), 2)
+        aa.line(s, IRON, P(N + 0.09, 0, z), P(N + 0.09, N + 0.09, z), 2)
+        aa.line(s, IRON, P(0, N + 0.09, z), P(N + 0.09, N + 0.09, z), 2)
     # stone gate piers at the corners
     for (x, y) in ((N - 0.05, -0.05), (N - 0.05, N - 0.05), (-0.05, N - 0.05)):
         box(s, x, y, x + 0.32, y + 0.32, H + 10, STONE)
@@ -266,8 +273,8 @@ def draw_planter(s, o, rng=None):
         px = fr.uniform(o.x0 + 0.2, o.x1 - 0.2)
         py = fr.uniform(o.y0 + 0.2, o.y1 - 0.2)
         gx, gy = P(px, py, h + 2)
-        pygame.draw.circle(s, (60, 120, 50), (round(gx), round(gy - 2)), 4)
-        pygame.draw.circle(s, fr.choice(cols), (round(gx + fr.randint(-2, 2)), round(gy - 5)), 2)
+        aa.circle(s, (60, 120, 50), (round(gx), round(gy - 2)), 4)
+        aa.circle(s, fr.choice(cols), (round(gx + fr.randint(-2, 2)), round(gy - 5)), 2)
 
 
 def draw_bench(s, o):
@@ -275,13 +282,13 @@ def draw_bench(s, o):
     IRON = (40, 40, 44)
     for yy in (o.y0 + 0.08, o.y1 - 0.08):
         for xx in (o.x0 + 0.1, o.x1 - 0.1):
-            pygame.draw.line(s, IRON, P(xx, yy, 0), P(xx, yy, 12), 3)
+            aa.line(s, IRON, P(xx, yy, 0), P(xx, yy, 12), 3)
     box(s, o.x0, o.y0, o.x1, o.y1, 3, WOOD, z0=12)
     # backrest along the far (y0) side
     for z in (20, 27):
         box(s, o.x0, o.y0, o.x1, o.y0 + 0.08, 4, shade(WOOD, 0.95), z0=z)
     for xx in (o.x0 + 0.1, o.x1 - 0.1):
-        pygame.draw.line(s, IRON, P(xx, o.y0 + 0.04, 12), P(xx, o.y0 + 0.04, 31), 3)
+        aa.line(s, IRON, P(xx, o.y0 + 0.04, 12), P(xx, o.y0 + 0.04, 31), 3)
 
 
 class TreeArt:
@@ -311,8 +318,8 @@ def draw_tree_base(s, o):
     gx, gy = P(o.x, o.y, h)
     pygame.draw.rect(s, (88, 62, 42), (gx - 7, gy - 96, 14, 98))
     pygame.draw.rect(s, (122, 92, 62), (gx + 1, gy - 96, 5, 98))
-    pygame.draw.line(s, (88, 62, 42), (gx, gy - 70), (gx - 22, gy - 96), 5)
-    pygame.draw.line(s, (88, 62, 42), (gx + 2, gy - 80), (gx + 20, gy - 104), 4)
+    aa.line(s, (88, 62, 42), (gx, gy - 70), (gx - 22, gy - 96), 5)
+    aa.line(s, (88, 62, 42), (gx + 2, gy - 80), (gx + 20, gy - 104), 4)
 
 
 def tree_canopy_rect(o, art):
@@ -328,8 +335,8 @@ def draw_obstacle_shadows(s, obstacles):
         if o.kind == "tree":
             gx, gy = P(o.x, o.y)
             L = 110 * SHADOW_K * 1.6
-            pygame.draw.ellipse(sh, (30, 26, 20, 70), (gx - L - 60, gy - 26, 130, 52))
-            pygame.draw.ellipse(sh, (30, 26, 20, 60), (gx - 26, gy - 13, 52, 26))
+            aa.ellipse(sh, (30, 26, 20, 70), (gx - L - 60, gy - 26, 130, 52))
+            aa.ellipse(sh, (30, 26, 20, 60), (gx - 26, gy - 13, 52, 26))
         elif o.kind == "planter":
             d = 16 * SHADOW_K / HW / 2   # in tiles along (-x, +y) = screen left
             poly(sh, (30, 26, 20, 70), [P(o.x0, o.y0), P(o.x0 - d, o.y0 + d), P(o.x0 - d, o.y1 + d), P(o.x1 - d, o.y1 + d), P(o.x1, o.y1), P(o.x0, o.y1)])
@@ -347,15 +354,15 @@ def village_school(s, fonts):
     # sky
     for y in range(WIN_H):
         t = min(1, y / 330)
-        pygame.draw.line(s, mix((96, 160, 226), (204, 226, 242), t), (0, y), (WIN_W, y))
+        aa.line(s, mix((96, 160, 226), (204, 226, 242), t), (0, y), (WIN_W, y))
     for cx, cy, sc in ((170, 70, 1.0), (520, 40, 0.7), (980, 80, 1.1), (1180, 30, 0.6), (760, 110, 0.5)):
         for i in range(9):
             r = int(rng.uniform(16, 30) * sc)
-            pygame.draw.circle(s, (250, 252, 255), (cx + int(rng.uniform(-50, 50) * sc), cy + int(rng.uniform(-8, 8) * sc)), r)
-        pygame.draw.ellipse(s, (232, 238, 246), (cx - 60 * sc, cy + 4 * sc, 120 * sc, 22 * sc))
+            aa.circle(s, (250, 252, 255), (cx + int(rng.uniform(-50, 50) * sc), cy + int(rng.uniform(-8, 8) * sc)), r)
+        aa.ellipse(s, (232, 238, 246), (cx - 60 * sc, cy + 4 * sc, 120 * sc, 22 * sc))
     # distant hills
     pts = [(0, 330)] + [(x, 300 - 28 * math.sin(x / 210) - 16 * math.sin(x / 77 + 1)) for x in range(0, WIN_W + 20, 20)] + [(WIN_W, 330)]
-    pygame.draw.polygon(s, (116, 160, 104), pts + [(WIN_W, WIN_H), (0, WIN_H)])
+    aa.polygon(s, (116, 160, 104), pts + [(WIN_W, WIN_H), (0, WIN_H)])
     # the ground: grass, then a pavement round the courtyard
     poly(s, GRASS, quad_z(-4.8, -4.8, 40, 40, 0))
     # a hedgerow of trees where the ground meets the hills, beyond the buildings
@@ -364,11 +371,11 @@ def village_school(s, fonts):
         draw_tree(s, 16.4 + k * 1.3, -5.0, 40 + k, 40, 30)
     for i in range(500):
         gx, gy = rng.uniform(0, WIN_W), rng.uniform(300, WIN_H)
-        pygame.draw.line(s, shade(GRASS, rng.uniform(0.82, 1.15)), (gx, gy), (gx + rng.uniform(-2, 2), gy - 3), 1)
+        aa.line(s, shade(GRASS, rng.uniform(0.82, 1.15)), (gx, gy), (gx + rng.uniform(-2, 2), gy - 3), 1)
     poly(s, PAVE, quad_z(-1.6, -1.6, N + 1.4, N + 1.4, 0))
     for i in range(-2, N + 2):
-        pygame.draw.line(s, shade(PAVE, 0.85), P(i, -1.6), P(i, N + 1.4), 1)
-        pygame.draw.line(s, shade(PAVE, 0.85), P(-1.6, i), P(N + 1.4, i), 1)
+        aa.line(s, shade(PAVE, 0.85), P(i, -1.6), P(i, N + 1.4), 1)
+        aa.line(s, shade(PAVE, 0.85), P(-1.6, i), P(N + 1.4, i), 1)
     poly(s, shade(PAVE, 0.8), quad_z(-1.6, -1.6, N + 1.4, N + 1.4, 0), 2)
 
     # --- the school, down the x < 0 side
@@ -386,7 +393,7 @@ def village_school(s, fonts):
     ym = 8.1
     poly(s, STONE, quad_x(x1 + 0.01, ym - 0.75, ym + 0.75, 0, 64))
     poly(s, (40, 70, 110), quad_x(x1 + 0.02, ym - 0.45, ym + 0.45, 0, 50))
-    pygame.draw.line(s, (220, 190, 90), P(x1 + 0.03, ym - 0.1, 26), P(x1 + 0.03, ym - 0.1, 26), 3)
+    aa.line(s, (220, 190, 90), P(x1 + 0.03, ym - 0.1, 26), P(x1 + 0.03, ym - 0.1, 26), 3)
     poly(s, (40, 46, 56), quad_x(x1 + 0.01, ym - 2.1, ym + 2.1, 72, 94))
     text_on_x_plane(s, fonts["sign"], "VILLAGE SCHOOL", (240, 226, 160), x1 + 0.02, ym, 83)
     # gable end (faces +y)
@@ -401,15 +408,15 @@ def village_school(s, fonts):
         t = k / 9
         xa = x1 + 0.25 + (xr - x1 - 0.25) * t
         za = h - 4 + 66 * t
-        pygame.draw.line(s, shade(SLATE, 0.8), P(xa, y0 - 0.2, za), P(xa, y1 + 0.2, za), 1)
-    pygame.draw.line(s, shade(SLATE, 0.6), P(xr, y0 - 0.2, h + 62), P(xr, y1 + 0.2, h + 62), 3)
+        aa.line(s, shade(SLATE, 0.8), P(xa, y0 - 0.2, za), P(xa, y1 + 0.2, za), 1)
+    aa.line(s, shade(SLATE, 0.6), P(xr, y0 - 0.2, h + 62), P(xr, y1 + 0.2, h + 62), 3)
     poly(s, shade(SLATE, 0.75), [P(x1 + 0.25, y1 + 0.2, h - 4), P(xr, y1 + 0.2, h + 62), P(xr, y1 + 0.2, h + 58), P(x1 + 0.1, y1 + 0.2, h - 4)])
     # bell cupola and chimneys
     box(s, xr - 0.4, 7.7, xr + 0.4, 8.5, 34, (236, 232, 220), z0=h + 50)
     poly(s, (60, 64, 72), [P(xr - 0.5, 7.6, h + 84), P(xr + 0.5, 7.6, h + 84), P(xr + 0.5, 8.6, h + 84), P(xr, 8.1, h + 112)])
     poly(s, (70, 76, 86), [P(xr + 0.5, 7.6, h + 84), P(xr + 0.5, 8.6, h + 84), P(xr, 8.1, h + 112)])
     poly(s, (50, 54, 62), [P(xr - 0.5, 8.6, h + 84), P(xr + 0.5, 8.6, h + 84), P(xr, 8.1, h + 112)])
-    pygame.draw.circle(s, (200, 160, 60), P(xr + 0.4, 8.1, h + 66), 5)
+    aa.circle(s, (200, 160, 60), P(xr + 0.4, 8.1, h + 66), 5)
     for yc in (2.5, 13.5):
         box(s, xr - 0.3, yc, xr + 0.3, yc + 0.6, 40, shade(BRICK, 0.95), z0=h + 40)
         for k in range(2):
@@ -430,13 +437,13 @@ def village_school(s, fonts):
         window_y(s, Y1 + 0.01, a + 1.6, a + 2.3, 70, 104)
         poly(s, shade(STONE, 0.8), quad_y(Y1 + 0.01, a + 1.55, a + 2.35, 0, 58))
         poly(s, doors[i], quad_y(Y1 + 0.02, a + 1.65, a + 2.25, 0, 52))
-        pygame.draw.circle(s, (220, 190, 90), [round(v) for v in P(a + 2.1, Y1 + 0.02, 26)], 2)
-        pygame.draw.line(s, shade(c, 0.6), P(b, Y1 + 0.01, 0), P(b, Y1 + 0.01, H), 1)
+        aa.circle(s, (220, 190, 90), [round(v) for v in P(a + 2.1, Y1 + 0.02, 26)], 2)
+        aa.line(s, shade(c, 0.6), P(b, Y1 + 0.01, 0), P(b, Y1 + 0.01, H), 1)
     # house numbers would go here; a hanging basket on the middle house
     hb = P(X0 + 2.5 * cw, Y1 + 0.2, 64)
-    pygame.draw.circle(s, (60, 110, 50), (round(hb[0]), round(hb[1])), 9)
+    aa.circle(s, (60, 110, 50), (round(hb[0]), round(hb[1])), 9)
     for k in range(10):
-        pygame.draw.circle(s, rng.choice([(230, 60, 90), (250, 220, 80), (250, 250, 250)]), (round(hb[0] + rng.uniform(-8, 8)), round(hb[1] + rng.uniform(-8, 6))), 2)
+        aa.circle(s, rng.choice([(230, 60, 90), (250, 220, 80), (250, 250, 250)]), (round(hb[0] + rng.uniform(-8, 8)), round(hb[1] + rng.uniform(-8, 6))), 2)
     # gable end at X1 (faces +x, lit)
     poly(s, colours[-1], [P(X1, Y0, 0), P(X1, Y1, 0), P(X1, Y1, H), P(X1, (Y0 + Y1) / 2, H + 56), P(X1, Y0, H)])
     window_x(s, X1 + 0.01, -3.6, -2.4, 70, 104)
@@ -447,8 +454,8 @@ def village_school(s, fonts):
     for k in range(1, 8):
         t = k / 8
         ya = Y1 + 0.25 + (yr - Y1 - 0.25) * t
-        pygame.draw.line(s, shade(ROOF, 0.82), P(X0 - 0.2, ya, H - 4 + 60 * t), P(X1 + 0.2, ya, H - 4 + 60 * t), 1)
-    pygame.draw.line(s, shade(ROOF, 0.6), P(X0 - 0.2, yr, H + 56), P(X1 + 0.2, yr, H + 56), 3)
+        aa.line(s, shade(ROOF, 0.82), P(X0 - 0.2, ya, H - 4 + 60 * t), P(X1 + 0.2, ya, H - 4 + 60 * t), 1)
+    aa.line(s, shade(ROOF, 0.6), P(X0 - 0.2, yr, H + 56), P(X1 + 0.2, yr, H + 56), 3)
     poly(s, shade(ROOF, 1.15), [P(X1 + 0.2, Y1 + 0.25, H - 4), P(X1 + 0.2, yr, H + 56), P(X1 + 0.2, yr, H + 52), P(X1 + 0.05, Y1 + 0.25, H - 4)])
     for i in range(1, 5):
         xc = X0 + i * cw - 0.3
@@ -467,8 +474,8 @@ def village_school(s, fonts):
         poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, z, z + 6))
     poly(s, STONE, quad_x(tx1 + 0.01, ty0, ty1, th - 12, th))
     poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, th - 12, th))
-    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 160, 0.8, 26)
-    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 160, 0.8, 26)
+    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 166, 0.6, 21)
+    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 166, 0.6, 21)
     tm, tn = (ty0 + ty1) / 2, (tx0 + tx1) / 2
     window_x(s, tx1 + 0.01, tm - 0.35, tm + 0.35, 106, 140)
     window_y(s, ty1 + 0.01, tn - 0.35, tn + 0.35, 106, 140)
@@ -479,8 +486,8 @@ def village_school(s, fonts):
     apex = P(tn, tm, th + 84)
     poly(s, (62, 70, 80), [P(tx0 - 0.15, ty1 + 0.15, th), P(tx1 + 0.15, ty1 + 0.15, th), apex])
     poly(s, (86, 96, 108), [P(tx1 + 0.15, ty1 + 0.15, th), P(tx1 + 0.15, ty0 - 0.15, th), apex])
-    pygame.draw.line(s, (200, 160, 60), apex, (apex[0], apex[1] - 20), 2)
-    pygame.draw.polygon(s, (200, 160, 60), [(apex[0], apex[1] - 20), (apex[0] + 11, apex[1] - 16), (apex[0], apex[1] - 12)])
+    aa.line(s, (200, 160, 60), apex, (apex[0], apex[1] - 20), 2)
+    aa.polygon(s, (200, 160, 60), [(apex[0], apex[1] - 20), (apex[0] + 11, apex[1] - 16), (apex[0], apex[1] - 12)])
 
 
 
@@ -503,8 +510,8 @@ def _disc(s, cx, cy, r, z, col):
 def _outside_shadow(s, pts):
     """A soft ground shadow (falling west), kept off the courtyard floor."""
     sh = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
-    pygame.draw.polygon(sh, (30, 26, 20, 75), pts)
-    pygame.draw.polygon(sh, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
+    aa.polygon(sh, (30, 26, 20, 75), pts)
+    aa.polygon(sh, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
     s.blit(sh, (0, 0))
 
 
@@ -540,13 +547,13 @@ def _soft_shadow(s, shapes, alpha=70, blur=4):
     w, h = int(max(xs)) - x0 + pad, int(max(ys)) - y0 + pad
     sh = pygame.Surface((w, h), pygame.SRCALPHA)
     for q in shapes:
-        pygame.draw.polygon(sh, (30, 26, 20, alpha), [(px - x0, py - y0) for px, py in q])
+        aa.polygon(sh, (30, 26, 20, alpha), [(px - x0, py - y0) for px, py in q])
     # blur by shrinking and growing again (works in pygame and pygame-ce alike)
     small = pygame.transform.smoothscale(sh, (max(1, w // blur), max(1, h // blur)))
     sh = pygame.transform.smoothscale(small, (w, h))
     full = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
     full.blit(sh, (x0, y0))
-    pygame.draw.polygon(full, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
+    aa.polygon(full, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
     s.blit(full, (0, 0))
 
 
@@ -600,8 +607,8 @@ def village_props(s):
         for k in range(26):
             px, py = rng.uniform(min(xs) + 6, max(xs) - 6), rng.uniform(min(ys) + 4, max(ys) - 4)
             if _inside(q, (px, py)):
-                pygame.draw.circle(s, (60, 120, 50), (round(px), round(py)), 4)
-                pygame.draw.circle(s, rng.choice(cols), (round(px), round(py) - 2), 2)
+                aa.circle(s, (60, 120, 50), (round(px), round(py)), 4)
+                aa.circle(s, rng.choice(cols), (round(px), round(py) - 2), 2)
 
 
 def _inside(q, p):

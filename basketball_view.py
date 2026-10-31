@@ -5,6 +5,7 @@ import functools
 import math
 
 import pygame
+import aa
 
 import basketball as BB
 import poses
@@ -28,7 +29,7 @@ class BasketballView:
         self.posers = app.bd_view.posers
         self.fx = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
         self.shadow = pygame.Surface((30, 15), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.shadow, (12, 12, 18, 140), self.shadow.get_rect())
+        aa.ellipse(self.shadow, (12, 12, 18, 140), self.shadow.get_rect())
 
     # ------------------------------------------------------------ poses
     def pose_for(self, g, r):
@@ -71,11 +72,11 @@ class BasketballView:
             s.blit(img, (x0, y0))
             rect = pygame.Rect(x0, y0, img.get_width(), img.get_height())
         else:
-            aa, ao, crouch, lift = pose
+            a_ang, ao, crouch, lift = pose
             p = self.posers[r.kind]
             act = 1 if poses.FORWARD[key] > 0 else 0
             angs = [0, 0]
-            angs[act] = aa
+            angs[act] = a_ang
             angs[1 - act] = ao
             hands = p.draw(s, key, (gx, gy - lift), ch.anchor[key], angs[0], angs[1], crouch)
             ax, ay = ch.anchor[key]
@@ -90,19 +91,19 @@ class BasketballView:
     # ------------------------------------------------------------ the ball
     def draw_ball_at(self, s, x, y, spin, r=9):
         x, y = round(x), round(y)
-        pygame.draw.circle(s, shade(ORANGE, 0.55), (x + 1, y + 1), r)
-        pygame.draw.circle(s, ORANGE, (x, y), r)
-        pygame.draw.circle(s, shade(ORANGE, 0.8), (x + 2, y + 2), r - 2, 0)
-        pygame.draw.circle(s, ORANGE, (x - 1, y - 1), r - 3)
+        aa.circle(s, shade(ORANGE, 0.55), (x + 1, y + 1), r)
+        aa.circle(s, ORANGE, (x, y), r)
+        aa.circle(s, shade(ORANGE, 0.8), (x + 2, y + 2), r - 2, 0)
+        aa.circle(s, ORANGE, (x - 1, y - 1), r - 3)
         # seams: one round the middle (turning with the spin) and a curved one
         a = spin
         ca, sa = math.cos(a), math.sin(a)
-        pygame.draw.line(s, SEAM, (x - ca * r, y - sa * r), (x + ca * r, y + sa * r), 1)
-        pygame.draw.line(s, SEAM, (x + sa * r, y - ca * r), (x - sa * r, y + ca * r), 1)
+        aa.line(s, SEAM, (x - ca * r, y - sa * r), (x + ca * r, y + sa * r), 1)
+        aa.line(s, SEAM, (x + sa * r, y - ca * r), (x - sa * r, y + ca * r), 1)
         k = 0.55
-        pygame.draw.arc(s, SEAM, (x - r - r * k * ca, y - r - r * k * sa, 2 * r, 2 * r), a - 1.0, a + 1.0, 1)
-        pygame.draw.circle(s, (255, 196, 140), (x - 3, y - 4), 2)
-        pygame.draw.circle(s, SEAM, (x, y), r, 1)
+        aa.arc(s, SEAM, (x - r - r * k * ca, y - r - r * k * sa, 2 * r, 2 * r), a - 1.0, a + 1.0, 1)
+        aa.circle(s, (255, 196, 140), (x - 3, y - 4), 2)
+        aa.circle(s, SEAM, (x, y), r, 1)
 
     def draw_ball(self, s, g):
         b = g.ball
@@ -126,7 +127,7 @@ class BasketballView:
         d = top * 0.55 / 32 / 2
         sh = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
         w = 0.1
-        pygame.draw.polygon(sh, (12, 12, 18, 60), [P(hp.post_x + w, hp.cy - w), P(hp.post_x + w - d, hp.cy - w + d),
+        aa.polygon(sh, (12, 12, 18, 60), [P(hp.post_x + w, hp.cy - w), P(hp.post_x + w - d, hp.cy - w + d),
                                                     P(hp.post_x - w - d, hp.cy + w + d), P(hp.post_x - w, hp.cy + w)])
         s.blit(sh, (0, 0))
         # padding round the bottom, then the steel post
@@ -138,7 +139,7 @@ class BasketballView:
         x0, x1 = sorted((hp.post_x, hp.bx))
         box(s, x0, hp.cy - 0.07, x1, hp.cy + 0.07, 9, POST, z0=za)
         # a diagonal brace
-        pygame.draw.line(s, shade(POST, 0.9), P(hp.post_x, hp.cy, za - 50), P((hp.post_x + hp.bx) / 2, hp.cy, za), 4)
+        aa.line(s, shade(POST, 0.9), P(hp.post_x, hp.cy, za - 50), P((hp.post_x + hp.bx) / 2, hp.cy, za), 4)
 
     def draw_board(self, s, hp, title=False):
         z0, z1 = hp.z0 * Z, hp.z1 * Z
@@ -163,8 +164,8 @@ class BasketballView:
             poly(s, (40, 46, 60), q, 4)
             poly(s, (200, 204, 212), quad_y(hp.y1, hp.bx, hp.bx + 0.06, z0, z1))
             # the bracket where the arm meets the board
-            pygame.draw.line(s, POST, P(hp.bx, hp.cy - 0.4, z0 + 20), P(hp.bx, hp.cy + 0.4, z0 + 20), 4)
-            pygame.draw.line(s, POST, P(hp.bx, hp.cy - 0.4, z1 - 20), P(hp.bx, hp.cy + 0.4, z1 - 20), 4)
+            aa.line(s, POST, P(hp.bx, hp.cy - 0.4, z0 + 20), P(hp.bx, hp.cy + 0.4, z0 + 20), 4)
+            aa.line(s, POST, P(hp.bx, hp.cy - 0.4, z1 - 20), P(hp.bx, hp.cy + 0.4, z1 - 20), 4)
 
     def rim_points(self, hp, half, n=24):
         """Points round the rim; half='back' (away from us) or 'front'."""
@@ -180,13 +181,13 @@ class BasketballView:
         pts = self.rim_points(hp, half)
         if half == "back":
             # the bracket from the board to the rim
-            pygame.draw.line(s, shade(RIM, 0.7), P(hp.bx, hp.cy, BB.RIM_Z * Z - 2),
+            aa.line(s, shade(RIM, 0.7), P(hp.bx, hp.cy, BB.RIM_Z * Z - 2),
                              P(hp.cx - hp.side * BB.RIM_R, hp.cy, BB.RIM_Z * Z), 4)
-            pygame.draw.lines(s, shade(RIM, 0.75), False, pts, 4)
+            aa.lines(s, shade(RIM, 0.75), False, pts, 4)
         else:
             self.draw_net(s, hp)
-            pygame.draw.lines(s, RIM, False, pts, 4)
-            pygame.draw.lines(s, shade(RIM, 1.25), False, [(x, y - 1) for x, y in pts[3:-3]], 1)
+            aa.lines(s, RIM, False, pts, 4)
+            aa.lines(s, shade(RIM, 1.25), False, [(x, y - 1) for x, y in pts[3:-3]], 1)
 
     def draw_net(self, s, hp):
         """A white cord net hanging from the rim, flicking when the ball goes through."""
@@ -321,7 +322,7 @@ class BasketballView:
         f.fill((0, 0, 0, 0))
         ang = math.asin(3.7 / BB.ARC_R)
         pts = [P(hp.cx + hp.side * BB.ARC_R * math.cos(a), 7 + BB.ARC_R * math.sin(a)) for a in [-ang + 2 * ang * i / 40 for i in range(41)]]
-        pygame.draw.lines(f, (255, 230, 90, 200), False, pts, 5)
+        aa.lines(f, (255, 230, 90, 200), False, pts, 5)
         s.blit(f, (0, 0))
 
     def draw_hoop_labels(self, s, g):
@@ -330,7 +331,12 @@ class BasketballView:
             if hp.side > 0 and g.callouts:
                 continue            # the far label sits where the callouts go
             owner = g.p1 if g.p1.goal is hp else g.p2
-            txt = f"{owner.name}'s hoop" if (owner.ai or owner is g.p2) else "Your hoop"
+            # Say who shoots where, so it can't be mixed up with football,
+            # where "Your goal" is the one you defend.
+            if owner is g.p1 and not owner.ai:
+                txt = "You shoot here"
+            else:
+                txt = f"{owner.name} shoots here"
             x, y = P(hp.bx, hp.cy, hp.z1 * Z + 18)
             im = app.f_tiny.render(txt, True, (255, 255, 255))
             rr = pygame.Rect(0, 0, im.get_width() + 16, im.get_height() + 4)
@@ -348,15 +354,15 @@ class BasketballView:
         x = rc.centerx
         top = rc.top - (34 if r.charging or r.jump_t is not None else 10)
         y = max(top, 90) + math.sin(t * 5) * 2
-        pygame.draw.polygon(s, (20, 24, 40), [(x - 9, y - 11), (x + 9, y - 11), (x, y + 1)])
-        pygame.draw.polygon(s, (255, 220, 80), [(x - 7, y - 10), (x + 7, y - 10), (x, y - 1)])
+        aa.polygon(s, (20, 24, 40), [(x - 9, y - 11), (x + 9, y - 11), (x, y + 1)])
+        aa.polygon(s, (255, 220, 80), [(x - 7, y - 10), (x + 7, y - 10), (x, y - 1)])
 
     # ------------------------------------------------------------ the HUD
     def draw_hud(self, s, g, t):
         app = self.app
         bd = app.bd_view
         bar = pygame.Rect(10, 8, WIN_W - 20, 66)
-        app.panel(s, bar, alpha=190)
+        app.panel(s, bar, alpha=228)
         for side, r in ((0, g.p1), (1, g.p2)):
             por = app.portrait(r.kind, 54)
             label = r.name + (" (you)" if not r.ai else "")
@@ -404,7 +410,7 @@ class BasketballView:
             if w is None:
                 head, sub = f"A draw, {sc}!", "Nothing in it. Have another go."
             elif not g.p1.ai and w is g.p1:
-                head, sub = f"{w.name} wins {sc}!", "Brilliant shooting! The robot wants a rematch."
+                head, sub = f"{w.name} wins {sc}!", "Brilliant shooting! The Robot wants a rematch."
             elif not g.p1.ai:
                 head, sub = f"The {w.name} wins {sc}", "So close! Have another go."
             else:

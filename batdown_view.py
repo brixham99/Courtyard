@@ -6,6 +6,7 @@ import math
 import os
 
 import pygame
+import aa
 
 import batdown as B
 import park
@@ -37,7 +38,7 @@ class BatdownView:
                        for k in ("archie", "holly", "robot")}
         self.oak = park.OakArt()
         self.ball_shadow = pygame.Surface((14, 7), pygame.SRCALPHA)
-        pygame.draw.ellipse(self.ball_shadow, (16, 24, 12, 110), self.ball_shadow.get_rect())
+        aa.ellipse(self.ball_shadow, (16, 24, 12, 110), self.ball_shadow.get_rect())
         self.fx = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
 
     # ------------------------------------------------------------ the pose for this moment
@@ -108,18 +109,18 @@ class BatdownView:
                 shx, shy = p.shoulders[key][act]
                 hand = p.arms[key][act].hand_at((gx + shx, gy + shy - bob), 0)
         else:
-            aa, ao, crouch, bat_kind = pose
+            a_ang, ao, crouch, bat_kind = pose
             p = self.posers[r.kind]
             angs = [0, 0]
-            angs[act] = aa
+            angs[act] = a_ang
             angs[1 - act] = ao
             hs = self._draw_posed(s, p, key, (gx, gy), ch.anchor[key], angs, crouch, g, r, bat_kind, act)
             hand = hs[act]
             ax, ay = ch.anchor[key]
             rect = pygame.Rect(round(gx - ax), round(gy - ay), img.get_width(), img.get_height())
         if hand is not None and g is not None and r is g.fielder and r.holding:
-            pygame.draw.circle(s, shade(BALL, 0.7), (round(hand[0]), round(hand[1])), 4)
-            pygame.draw.circle(s, BALL, (round(hand[0]) - 1, round(hand[1]) - 1), 3)
+            aa.circle(s, shade(BALL, 0.7), (round(hand[0]), round(hand[1])), 4)
+            aa.circle(s, BALL, (round(hand[0]) - 1, round(hand[1]) - 1), 3)
         return rect
 
     def _draw_posed(self, s, p, key, feet, anchor, angs, crouch, g, r, bat_kind, act):
@@ -157,13 +158,13 @@ class BatdownView:
         ux, uy = (bx - ax) / L, (by - ay) / L
         k = min(0.36, 20 / L)
         sx, sy = ax + (bx - ax) * k, ay + (by - ay) * k
-        pygame.draw.line(s, HANDLE, (ax - ux * 4, ay - uy * 4), (sx, sy), 3)
-        pygame.draw.line(s, GRIP, (ax - ux * 3, ay - uy * 3), (ax + (sx - ax) * 0.6, ay + (sy - ay) * 0.6), 4)
+        aa.line(s, HANDLE, (ax - ux * 4, ay - uy * 4), (sx, sy), 3)
+        aa.line(s, GRIP, (ax - ux * 3, ay - uy * 3), (ax + (sx - ax) * 0.6, ay + (sy - ay) * 0.6), 4)
         nx, ny = -uy * width / 2, ux * width / 2
         poly = [(sx + nx * 0.7, sy + ny * 0.7), (bx + nx, by + ny), (bx - nx, by - ny), (sx - nx * 0.7, sy - ny * 0.7)]
-        pygame.draw.polygon(s, shade(WILLOW, 0.72), [(x + 1, y + 1) for x, y in poly])
-        pygame.draw.polygon(s, WILLOW, poly)
-        pygame.draw.line(s, shade(WILLOW, 1.12), (sx + nx * 0.5, sy + ny * 0.5), (bx + nx * 0.7, by + ny * 0.7), 2)
+        aa.polygon(s, shade(WILLOW, 0.72), [(x + 1, y + 1) for x, y in poly])
+        aa.polygon(s, WILLOW, poly)
+        aa.line(s, shade(WILLOW, 1.12), (sx + nx * 0.5, sy + ny * 0.5), (bx + nx * 0.7, by + ny * 0.7), 2)
 
     def draw_fallen_bat(self, s, g):
         bx, by, ux, uy = g.fallen
@@ -180,8 +181,8 @@ class BatdownView:
         for (dx1, dy1, dx2, dy2) in ((-0.3, 0, 0.3, 0), (0, -0.3, 0, 0.3)):
             p1 = P(x + dx1 * k, y + dy1 * k)
             p2 = P(x + dx2 * k, y + dy2 * k)
-            pygame.draw.line(s, (60, 90, 50), (p1[0], p1[1] + 1), (p2[0], p2[1] + 1), 6)
-            pygame.draw.line(s, CHALK, p1, p2, 4)
+            aa.line(s, (60, 90, 50), (p1[0], p1[1] + 1), (p2[0], p2[1] + 1), 6)
+            aa.line(s, CHALK, p1, p2, 4)
 
     def draw_aim_guide(self, s, g, t):
         f = g.fielder
@@ -194,16 +195,16 @@ class BatdownView:
         n = int(d / 0.4)
         for i in range(1, n + 1):
             px, py = P(f.x + ca * i * 0.4, f.y + sa * i * 0.4)
-            pygame.draw.circle(surf, (255, 255, 255, 150), (round(px), round(py)), 2)
+            aa.circle(surf, (255, 255, 255, 150), (round(px), round(py)), 2)
         # the arrow head a little way out
         tip = P(f.x + ca * 1.25, f.y + sa * 1.25)
         l1 = P(f.x + ca * 0.85 - sa * 0.25, f.y + sa * 0.85 + ca * 0.25)
         l2 = P(f.x + ca * 0.85 + sa * 0.25, f.y + sa * 0.85 - ca * 0.25)
-        pygame.draw.polygon(surf, (255, 230, 90, 220), [tip, l1, l2])
+        aa.polygon(surf, (255, 230, 90, 220), [tip, l1, l2])
         if g.charging or g.power > 0:
             gx, gy = P(lx, ly)
-            pygame.draw.ellipse(surf, (255, 90, 70, 200), (gx - 12, gy - 6, 24, 12), 3)
-            pygame.draw.circle(surf, (255, 90, 70, 230), (round(gx), round(gy)), 3)
+            aa.ellipse(surf, (255, 90, 70, 200), (gx - 12, gy - 6, 24, 12), 3)
+            aa.circle(surf, (255, 90, 70, 230), (round(gx), round(gy)), 3)
         s.blit(surf, (0, 0))
 
     # ------------------------------------------------------------ the scene
@@ -220,7 +221,7 @@ class BatdownView:
                 gx, gy = P(x, y)
                 a = int(120 * (1 - age / 0.6))
                 rr = 6 + age * 26
-                pygame.draw.ellipse(s, shade((150, 190, 110), 1.15), (gx - rr, gy - rr * 0.45, rr * 2, rr * 0.9), 1)
+                aa.ellipse(s, shade((150, 190, 110), 1.15), (gx - rr, gy - rr * 0.45, rr * 2, rr * 0.9), 1)
             if g.state in ("swap", "match_over") and getattr(g, "fallen", None):
                 self.draw_fallen_bat(s, g)
             ball = g.ball
@@ -275,16 +276,16 @@ class BatdownView:
     def draw_ball(self, s, b):
         x, y = P(b.x, b.y, b.z * B.ZPX)
         x, y = round(x), round(y)
-        pygame.draw.circle(s, shade(BALL, 0.55), (x, y), 6)
-        pygame.draw.circle(s, BALL, (x, y), 5)
-        pygame.draw.circle(s, (250, 255, 200), (x + 1, y - 2), 1)
-        pygame.draw.arc(s, (250, 250, 240), (x - 4, y - 4, 8, 8), 3.6, 5.6, 1)
+        aa.circle(s, shade(BALL, 0.55), (x, y), 6)
+        aa.circle(s, BALL, (x, y), 5)
+        aa.circle(s, (250, 255, 200), (x + 1, y - 2), 1)
+        aa.arc(s, (250, 250, 240), (x - 4, y - 4, 8, 8), 3.6, 5.6, 1)
 
     # ------------------------------------------------------------ the HUD
     def draw_hud(self, s, g, t):
         app = self.app
         bar = pygame.Rect(10, 8, WIN_W - 20, 66)
-        app.panel(s, bar, alpha=190)
+        app.panel(s, bar, alpha=228)
         for side, r in ((0, g.p1), (1, g.p2)):
             por = app.portrait(r.kind, 54)
             label = r.name + (" (you)" if not r.ai else "")
@@ -330,7 +331,7 @@ class BatdownView:
             if w is None:
                 head, sub = f"A draw, {sc}!", "Nothing in it. Have another go."
             elif not g.p1.ai and w is g.p1:
-                head, sub = f"{w.name} wins {sc}!", "Well batted! The robot wants a rematch."
+                head, sub = f"{w.name} wins {sc}!", "Well batted! The Robot wants a rematch."
             elif not g.p1.ai:
                 head, sub = f"The {w.name} wins {sc}", "So close! Have another go."
             else:
