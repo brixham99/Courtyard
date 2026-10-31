@@ -1,8 +1,10 @@
-"""Synthesise Courtyard's sound effects and title music (numpy, 22,050 Hz mono).
+"""Synthesise Courtyard's sound effects (numpy, 22,050 Hz mono).
 
-Writes assets/sounds/*.wav and title_theme.ogg (via ffmpeg if available, else wav).
+Writes assets/sounds/*.wav. The title music is made by tools/make_title_music.py
+(pass --old-theme here to rebuild the original chiptune as title_theme_old.ogg).
 """
 import os
+import sys
 import subprocess
 import wave
 import numpy as np
@@ -194,13 +196,14 @@ def main():
     save("robot_happy", robot_chirp(True), 0.45)
     save("robot_sad", robot_chirp(False), 0.45)
     save("cheer", cheer(), 0.7)
-    p = save("title_theme", music(), 0.7)
-    try:
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", p, "-c:a", "libvorbis", "-q:a", "4",
-                        os.path.join(OUT, "title_theme.ogg")], check=True)
-        os.remove(p)
-    except Exception as e:
-        print("kept wav:", e)
+    if "--old-theme" in sys.argv:
+        p = save("title_theme_old", music(), 0.7)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", p, "-c:a", "libvorbis", "-q:a", "4",
+                            os.path.join(OUT, "title_theme_old.ogg")], check=True)
+            os.remove(p)
+        except Exception as e:
+            print("kept wav:", e)
     print("sounds written to", OUT)
 
 
