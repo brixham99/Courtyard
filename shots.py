@@ -80,3 +80,79 @@ def main(out):
             app.game.continue_()
     app.draw(); pygame.image.save(app.screen, os.path.join(out, "match_over.png"))
     print("shots in", out)
+
+
+def batdown(out):
+    """Batdown screenshots: python game.py --shots-batdown DIR"""
+    import batdown as B
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.makedirs(out, exist_ok=True)
+    app = G.App(sound=False)
+    bd = [n for n, _ in G.GAMES].index("Batdown")
+    app.sel_game = bd
+    app.t = 0.4
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "batdown_title.png"))
+
+    def save(name, as_human=True):
+        g = app.game
+        was = g.p1.ai
+        if as_human:
+            g.p1.ai = False          # draw it as the player sees it (the frame itself was played by the AI)
+        app.draw()
+        g.p1.ai = was
+        pygame.image.save(app.screen, os.path.join(out, name))
+
+    def game_where(p1_bats, seed0=200):
+        for sd in range(seed0, seed0 + 50):
+            app.sel_char = 0
+            app.start_game(player_ai=True, seed=sd)
+            if (app.game.batter is app.game.p1) == p1_bats:
+                return sd
+
+    # batting: Archie at the crease, the robot's throw on its way in
+    game_where(True)
+    g = app.game
+    run_until(app, lambda a: g.state == "play" and g.phase == "flight" and g.flight_t > 0.42 and g.batter is g.p1, limit=60 * 60)
+    save("batdown_batting.png")
+    # the hit: just after bat meets ball
+    run_until(app, lambda a: g.phase == "hit" and g.ball.age > 0.15 or g.state != "play", limit=60 * 10)
+    save("batdown_hit.png")
+    # fielding: Archie chasing the ball, the chalk X down
+    game_where(False, 300)
+    g = app.game
+    run_until(app, lambda a: g.state == "play" and g.phase == "fetch" and not g.fielder.holding and g.ball.age > 0.6
+              and g.fielder is g.p1, limit=60 * 120)
+    save("batdown_fielding.png")
+    # throw: Archie (really human-controlled) on the bowling mark, aiming with the power up
+    sd = game_where(False, 400)
+    app.start_game(player_ai=False, seed=sd)
+    g = app.game
+    run_until(app, lambda a: g.state == "play", limit=60 * 5)
+    app.held_turn = [pygame.K_RIGHT]
+    for _ in range(12):
+        app.update(1 / 60)
+    app.held_turn = []
+    g.press("space")
+    for _ in range(int(60 * 1.0)):
+        app.update(1 / 60)
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "batdown_throw.png"))
+    # the robot's throw in the air
+    game_where(True, 500)
+    g = app.game
+    run_until(app, lambda a: g.state == "play" and g.phase == "flight" and 0.1 < g.flight_t < 0.2, limit=60 * 60)
+    save("batdown_throw_flight.png")
+    # a swap: bat down (or caught)
+    for sd in range(600, 640):
+        app.start_game(player_ai=True, seed=sd)
+        g = app.game
+        ok = run_until(app, lambda a: g.state == "swap" and g.swap_reason == "bat" and 3.95 < g.state_t < 4.05 or g.state == "match_over",
+                       limit=60 * 200)
+        if ok and g.state == "swap":
+            break
+    save("batdown_swap.png")
+    run_until(app, lambda a: g.state == "swap" and g.state_t < 2.8 or g.state == "play", limit=60 * 10)
+    save("batdown_swap_walk.png")
+    # the end
+    run_until(app, lambda a: g.state == "match_over", limit=60 * 600)
+    save("batdown_match_over.png", as_human=False)
+    print("batdown shots in", out)

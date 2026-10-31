@@ -611,14 +611,35 @@ def _inside(q, p):
 SETTINGS = {"village_school": ("Village School", village_school, village_props)}
 
 
+def _register_park():
+    import park
+    # name, backdrop, props (after the floor), floor, back edge, front layer, obstacles
+    SETTINGS["park"] = ("The Park", park.park, park.park_props, park.park_floor, park.park_back,
+                        park.build_park_front, park.park_obstacles)
+
+
+_register_park()
+
+
 def build_background(setting, fonts):
     # explicit 24-bit, no alpha: on macOS the display format carries an alpha
     # channel, so a default Surface came out fully transparent there
     s = pygame.Surface((WIN_W, WIN_H), 0, 24)
-    SETTINGS[setting][1](s, fonts)
+    st = SETTINGS[setting]
+    st[1](s, fonts)
     rng = random.Random(11)
-    draw_floor(s, rng)
-    draw_back_walls(s, rng)
-    if len(SETTINGS[setting]) > 2:
-        SETTINGS[setting][2](s)      # props outside the railings, over the floor
+    (st[3] if len(st) > 3 else draw_floor)(s, rng)
+    (st[4] if len(st) > 4 else draw_back_walls)(s, rng)
+    if len(st) > 2:
+        st[2](s)      # props outside the railings, over the floor
     return s
+
+
+def build_front_for(setting):
+    st = SETTINGS[setting]
+    return st[5]() if len(st) > 5 else build_front()
+
+
+def obstacles_for(setting):
+    st = SETTINGS[setting]
+    return st[6]() if len(st) > 6 else courtyard_obstacles()
