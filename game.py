@@ -144,13 +144,22 @@ class Sound:
             if ch and vol != 1.0:
                 ch.set_volume(vol)
 
+    TRACKS = {"title": "title_theme.ogg", "game": "game_music.ogg"}   # game: the Dinosaur vs Bees loop
+
+    def set_track(self, name):
+        if getattr(self, "track", "title") == name:
+            return
+        self.track = name
+        if self.music_on:
+            self.music(True)
+
     def music(self, on=True):
         self.music_on = on
         if not self.ok:
             return
         try:
             if on:
-                pygame.mixer.music.load(os.path.join(SND_DIR, "title_theme.ogg"))
+                pygame.mixer.music.load(os.path.join(SND_DIR, self.TRACKS[getattr(self, "track", "title")]))
                 pygame.mixer.music.set_volume(MUSIC_VOL)
                 pygame.mixer.music.play(-1)
             else:
@@ -178,6 +187,7 @@ class App:
         self.obstacles = scene.courtyard_obstacles()
         self.bg = scene.build_background(self.setting, self.fonts)
         scene.draw_obstacle_shadows(self.bg, self.obstacles)
+        self.bg = self.bg.convert()   # opaque copy in the display's own format
         self.front = scene.build_front()
         self.tree_art = scene.TreeArt()
         self.canopy_mask = None
@@ -199,6 +209,7 @@ class App:
         k = PLAYABLE[self.sel_char]
         self.game = tag.TagGame(k, NAMES[k], player_ai=player_ai, seed=seed, obstacles=self.obstacles, round_s=round_s)
         self.state = "play"
+        self.sound.set_track("game")
         self.step_phase = {}
         self.held_turn, self.held_move = [], []
 
@@ -231,6 +242,7 @@ class App:
             elif self.state == "play":
                 if e.key == pygame.K_ESCAPE:
                     self.state = "title"
+                    self.sound.set_track("title")
                     return True
                 if e.key in TURN_KEYS and e.key not in self.held_turn:
                     self.held_turn.append(e.key)
@@ -242,6 +254,7 @@ class App:
                         g.continue_()
                     elif g.state == "match_over" and g.state_t < 2.0:
                         self.state = "title"
+                        self.sound.set_track("title")
         if e.type == pygame.KEYUP:
             if e.key in self.held_turn:
                 self.held_turn.remove(e.key)
@@ -468,6 +481,21 @@ class App:
         k = h / head.get_height()
         return pygame.transform.smoothscale(head, (round(head.get_width() * k), h))
 
+    def draw_stars(self, s, won, n, x, cy, right):
+        # drawn as polygons: the star characters are missing from some Mac fonts
+        r, gap = 10, 24
+        for i in range(n):
+            cx = (x - r - i * gap) if right else (x + r + i * gap)
+            pts = []
+            for k in range(10):
+                rad = r if k % 2 == 0 else r * 0.45
+                a = -math.pi / 2 + k * math.pi / 5
+                pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+            filled = (i < won) if not right else (i < won)
+            if filled:
+                pygame.draw.polygon(s, (255, 210, 70), pts)
+            pygame.draw.polygon(s, (255, 210, 70), pts, 2)
+
     def draw_hud(self, s, g):
         bar = pygame.Rect(10, 8, WIN_W - 20, 66)
         self.panel(s, bar, alpha=190)
@@ -475,19 +503,19 @@ class App:
             por = self.portrait(r.kind, 54)
             label = r.name + (" (you)" if not r.ai else "")
             col = (255, 120, 110) if r.it else (230, 236, 250)
-            stars = "★" * g.wins[side] + "☆" * (2 - g.wins[side]) if g.rounds == 3 else ""
+            nstars = 2 if g.rounds == 3 else 0
             if side == 0:
                 s.blit(por, (bar.x + 10, bar.y + 6))
                 x = bar.x + 20 + por.get_width()
                 self.text(s, self.f_hud, label, col, (x, bar.y + 6))
                 self.text(s, self.f_small, f"It for {fmt_it(r.it_time)}   Tags {r.tags}", (210, 216, 230), (x, bar.y + 36))
-                self.text(s, self.f_hud, stars, (255, 210, 70), (x + 250, bar.y + 6))
+                self.draw_stars(s, g.wins[side], nstars, x + 250, bar.y + 17, False)
             else:
                 s.blit(por, (bar.right - 10 - por.get_width(), bar.y + 6))
                 x = bar.right - 20 - por.get_width()
                 self.text(s, self.f_hud, label, col, (x, bar.y + 6), "topright")
                 self.text(s, self.f_small, f"It for {fmt_it(r.it_time)}   Tags {r.tags}", (210, 216, 230), (x, bar.y + 36), "topright")
-                self.text(s, self.f_hud, stars, (255, 210, 70), (x - 250, bar.y + 6), "topright")
+                self.draw_stars(s, g.wins[side], nstars, x - 250, bar.y + 17, True)
         cx = WIN_W // 2
         self.text(s, self.f_small_b, f"TAG  ·  Round {g.round} of {g.rounds}", (190, 200, 220), (cx, bar.y + 4), "midtop")
         tcol = (255, 90, 80) if (g.clock < 10 and g.state == "playing" and int(g.clock * 2) % 2 == 0) else (255, 255, 255)

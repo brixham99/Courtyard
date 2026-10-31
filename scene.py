@@ -532,7 +532,9 @@ SETTINGS = {"village_school": ("Village School", village_school)}
 
 
 def build_background(setting, fonts):
-    s = pygame.Surface((WIN_W, WIN_H))
+    # explicit 24-bit, no alpha: on macOS the display format carries an alpha
+    # channel, so a default Surface came out fully transparent there
+    s = pygame.Surface((WIN_W, WIN_H), 0, 24)
     SETTINGS[setting][1](s, fonts)
     rng = random.Random(11)
     draw_floor(s, rng)
