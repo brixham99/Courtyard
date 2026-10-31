@@ -1,11 +1,11 @@
 """The stadium: a small-sided football pitch in a mini community stadium.
 
-Along the back (y < 0) a little covered stand with four tiers of seats, a
-crowd in their colours, a green back wall and a roof with the scoreboard on
+Along the back (y < 0) a little covered stand with four tiers of empty seats
+in the club's colours, a green back wall and a roof with the scoreboard on
 it; floodlight pylons at the corners. Behind the far goal (x < 0) the club car
 park, a row of trees and farmland hills. Along the other side (y > N) the
 Saturday farmers market: striped awnings over crates of veg, fruit, flowers,
-cheese and bread, bunting, chalkboards and shoppers. At the near end (x > N)
+cheese and bread, bunting and chalkboards (no people about). At the near end (x > N)
 a hedge, a pavement and a country lane.
 
 The pitch is the same N x N square as the other settings: bright striped
@@ -14,11 +14,13 @@ a cage net above the far boards). The goals themselves are drawn by
 football_view, as the ball goes in and out of them.
 """
 import math
+import os
 import random
 import pygame
 
 from iso import WIN_W, WIN_H, HW, HH, N, P, shade, mix, poly, quad_x, quad_y, quad_z, box, SHADOW_K
-from scene import text_on_x_plane, text_on_y_plane, _cyl, _disc, draw_tree
+from scene import ART_DIR
+from scene import text_on_x_plane, text_on_y_plane, _cyl, _disc, draw_tree, _prop_art, _soft_shadow
 
 GRASS_A = (82, 166, 74)
 GRASS_B = (72, 152, 66)
@@ -80,24 +82,36 @@ def horizon_y(x):
 
 
 # ------------------------------------------------------------------ bits and pieces
-def car(s, x, y, col):
-    """A parked car, nose towards the pitch (its length along x)."""
-    x0, x1, y0, y1 = x, x + 1.55, y, y + 0.78
-    _shadow(s, [P(x0 - 0.3, y0 + 0.3), P(x1 - 0.3, y0 + 0.3), P(x1 - 0.3, y1 + 0.35), P(x0 - 0.3, y1 + 0.35)], 60)
-    for wx in (x0 + 0.3, x1 - 0.3):
-        for wy in (y1,):
-            gx, gy = P(wx, wy, 5)
-            pygame.draw.ellipse(s, (24, 24, 28), (gx - 6, gy - 4, 12, 9))
-    box(s, x0, y0, x1, y1, 12, col, z0=4)
-    # the cabin, set back a little, with glass all round
-    cx0, cx1 = x0 + 0.28, x1 - 0.42
-    box(s, cx0, y0 + 0.08, cx1, y1 - 0.08, 11, shade(col, 0.95), z0=16)
-    glass = (150, 186, 210)
-    poly(s, shade(glass, 0.8), quad_y(y1 - 0.08, cx0 + 0.06, cx1 - 0.06, 18, 26))
-    poly(s, glass, quad_x(cx1, y0 + 0.14, y1 - 0.14, 18, 26))
-    gx, gy = P(x1, (y0 + y1) / 2, 10)
-    pygame.draw.line(s, (250, 246, 220), P(x1, y0 + 0.1, 11), P(x1, y0 + 0.22, 11), 2)
-    pygame.draw.line(s, (250, 246, 220), P(x1, y1 - 0.22, 11), P(x1, y1 - 0.1, 11), 2)
+# the car park's Teslas, painted (tools/cut_cars.py): (sprite, length m, width m)
+TESLAS = (("tesla_model3_red", 4.72, 1.85), ("tesla_modely_white", 4.75, 1.92),
+          ("tesla_models_grey", 4.97, 1.96), ("tesla_modelx_blue", 5.04, 2.00),
+          ("tesla_cybertruck", 5.68, 2.03))
+CAR_TILES_PER_M = 0.51          # (0.85 x 0.6: Nathan had them 40% smaller)
+PARK_X0, PARK_X1 = -6.9, -1.3   # the car park, behind the far goal
+BAY_NOSE = -1.75                # every car parks nose-in up to this line
+BAY_W, BAY_LEN = 1.55, 3.4      # bay width (along y) and depth (along x)
+# two runs of bays either side of the far goal, so no car hides behind it: (first bay's y, bays)
+BAY_RUNS = ((-2.2, 2), (9.0, 3))
+
+
+def car(s, name, length_m, width_m, y_mid):
+    """A painted Tesla parked nose-in (towards the pitch), its length along x."""
+    L, W = length_m * CAR_TILES_PER_M, width_m * CAR_TILES_PER_M
+    x1 = BAY_NOSE
+    x0 = x1 - L
+    y0, y1 = y_mid - W / 2, y_mid + W / 2
+    # soft shadow, falling west (screen left), plus a darker patch under the body
+    d = 0.35
+    _soft_shadow(s, [P(x0 - d, y0 + d), P(x1 - d, y0 + d), P(x1 - d, y1 + d), P(x0 - d, y1 + d)], alpha=70, blur=5)
+    _soft_shadow(s, [P(x0 + 0.2, y0 + 0.1), P(x1 - 0.2, y0 + 0.1), P(x1 - 0.2, y1 - 0.05), P(x0 + 0.2, y1 - 0.05)], alpha=90, blur=3)
+    left, right = P(x0, y1)[0], P(x1, y0)[0]
+    raw = pygame.image.load(os.path.join(ART_DIR, f"{name}.png"))
+    rw, rh = raw.get_size()
+    w = round(right - left)
+    img = _prop_art(name, max(1, round(rh * w / rw)))
+    iw, ih = img.get_size()
+    bottom = P(x1, y1)[1] + 3
+    s.blit(img, (round((left + right) / 2 - iw / 2), round(bottom - ih)))
 
 
 def floodlight(s, x, y, H=236):
@@ -128,38 +142,6 @@ def floodlight(s, x, y, H=236):
             cy = top + 4 + j * 7
             pygame.draw.rect(s, (255, 252, 226), (cx - 5, cy - 2, 10, 5), border_radius=2)
     pygame.draw.line(s, (60, 64, 72), (gx, gy - H), (gx, top + hh), 3)
-
-
-def person(s, x, y, coat, hair, seed, bag=None, h=62):
-    """A shopper, drawn simply: legs, coat, arms, head and hair (an adult, so taller than the children)."""
-    rng = random.Random(seed)
-    gx, gy = P(x, y)
-    gx, gy = round(gx), round(gy)
-    sh = pygame.Surface((30, 12), pygame.SRCALPHA)
-    pygame.draw.ellipse(sh, (20, 20, 26, 80), sh.get_rect())
-    s.blit(sh, (gx - 18, gy - 6))
-    legs = rng.choice([(50, 60, 90), (60, 60, 64), (90, 80, 70)])
-    lh = int(h * 0.42)
-    pygame.draw.line(s, legs, (gx - 3, gy), (gx - 3, gy - lh), 4)
-    pygame.draw.line(s, legs, (gx + 3, gy), (gx + 3, gy - lh), 4)
-    pygame.draw.ellipse(s, (40, 36, 34), (gx - 7, gy - 3, 7, 4))
-    pygame.draw.ellipse(s, (40, 36, 34), (gx + 1, gy - 3, 7, 4))
-    bh = int(h * 0.4)
-    body = pygame.Rect(0, 0, 16, bh)
-    body.midbottom = (gx, gy - lh + 3)
-    pygame.draw.rect(s, coat, body, border_radius=5)
-    pygame.draw.rect(s, shade(coat, 0.75), body.inflate(-10, 0).move(3, 0), border_radius=4)
-    pygame.draw.line(s, shade(coat, 0.85), (body.x, body.y + 4), (body.x - 2, body.bottom - 2), 4)
-    pygame.draw.line(s, shade(coat, 0.85), (body.right - 1, body.y + 4), (body.right + 1, body.bottom - 2), 4)
-    hy = body.y - 7
-    pygame.draw.circle(s, rng.choice([(240, 200, 170), (200, 150, 110), (140, 96, 66)]), (gx, hy), 7)
-    pygame.draw.arc(s, hair, (gx - 7, hy - 7, 14, 14), 0.2, math.pi - 0.2, 4)
-    if bag:
-        pygame.draw.rect(s, bag, (body.right - 1, body.bottom - 8, 9, 10), border_radius=2)
-        pygame.draw.arc(s, shade(bag, 0.7), (body.right, body.bottom - 13, 7, 9), 0, math.pi, 1)
-        # a few greens sticking out of the bag
-        pygame.draw.line(s, (70, 150, 60), (body.right + 3, body.bottom - 8), (body.right + 1, body.bottom - 14), 2)
-        pygame.draw.line(s, (70, 150, 60), (body.right + 5, body.bottom - 8), (body.right + 7, body.bottom - 13), 2)
 
 
 def crate(s, x, y, w, d, col=(186, 140, 86), z0=0, h=8):
@@ -382,27 +364,30 @@ def stadium(s, fonts):
         pygame.draw.line(s, shade(VERGE, rng.uniform(0.85, 1.15)), (gx, gy), (gx + rng.uniform(-2, 2), gy - 3), 1)
 
     # behind the far goal: the club car park, with a row of trees behind it
-    poly(s, ROAD, quad_z(-6.6, -5.0, -1.3, N + 0.6, 0))
+    poly(s, ROAD, quad_z(PARK_X0, -5.0, PARK_X1, N + 0.6, 0))
     for k in range(400):
-        x, y = rng.uniform(-6.6, -1.3), rng.uniform(-5, N + 0.6)
+        x, y = rng.uniform(PARK_X0, PARK_X1), rng.uniform(-5, N + 0.6)
         gx, gy = P(x, y)
         s.set_at((round(gx), round(gy)), shade(ROAD, rng.uniform(0.8, 1.2)))
-    for i in range(0, 17):
-        y = -1.0 + i * 0.95
-        pygame.draw.line(s, (232, 232, 226), P(-5.9, y), P(-4.0, y), 2)
-    pygame.draw.line(s, (232, 232, 226), P(-5.9, -1.0), P(-5.9, -1 + 16 * 0.95), 2)
-    pygame.draw.line(s, (240, 210, 60), P(-2.4, -3.0), P(-2.4, N + 0.6), 2)
-    for k, row in enumerate(range(0, 16)):
-        y = -1.0 + row * 0.95 + 0.09
-        if rng.random() < 0.72:
-            col = rng.choice([(200, 50, 50), (240, 240, 236), (50, 90, 170), (60, 62, 70), (220, 180, 40), (110, 160, 200), (150, 150, 156)])
-            car(s, -5.75, y, col)
     # trees along the back of the car park (only where they stand on the ground)
     for k in range(9):
         x, y = -7.6, -1.6 + k * 1.9
         gx, gy = P(x, y)
         if gy > hy(gx) + 6 and gx > -30:
             draw_tree(s, x, y, 70 + k, 36, 30)
+    # the marked bays, nose-in towards the pitch, and the five Teslas in them
+    LINE = (232, 232, 226)
+    bx0, bx1 = BAY_NOSE + 0.25 - BAY_LEN, BAY_NOSE + 0.25
+    bays = []
+    for y0, n in BAY_RUNS:
+        for i in range(n + 1):
+            y = y0 + i * BAY_W
+            pygame.draw.line(s, LINE, P(bx0, y), P(bx1, y), 2)
+        pygame.draw.line(s, LINE, P(bx1, y0), P(bx1, y0 + n * BAY_W), 2)
+        bays += [y0 + (i + 0.5) * BAY_W for i in range(n)]
+    pygame.draw.line(s, (240, 210, 60), P(PARK_X1 - 0.12, -3.0), P(PARK_X1 - 0.12, N + 0.6), 2)
+    for i, (name, lm, wm) in enumerate(TESLAS):
+        car(s, name, lm, wm, bays[i])
 
     # the near end: a hedge, a pavement and a country lane beyond
     poly(s, PAVING, quad_z(15.2, -6, 16.4, N + 6, 0))
@@ -541,43 +526,33 @@ def stadium_back(s, rng):
 
 
 def draw_stand(s, rng):
-    """The covered stand: back wall, four tiers of seats with the crowd, the roof and the scoreboard."""
+    """The covered stand: back wall, four tiers of empty seats, the roof and the scoreboard."""
     # the back wall, in club green, with the club's name in white along it
     poly(s, STAND, quad_y(ST_BACK, ST_X0, ST_X1, 0, ROOF_Z1))
     for k in range(int(ST_X0 * 4), int(ST_X1 * 4)):
         x = k / 4
         pygame.draw.line(s, shade(STAND, 0.85), P(x, ST_BACK, 0), P(x, ST_BACK, ROOF_Z1), 1)
-    shirts = [(220, 50, 50), (250, 210, 50), (60, 120, 220), (250, 250, 250), (60, 170, 90), (240, 130, 40), (40, 160, 220)]
-    skin = [(240, 200, 170), (210, 160, 120), (150, 104, 72), (110, 76, 54)]
-    hair = [(60, 40, 30), (190, 140, 70), (30, 26, 24), (150, 90, 40), (220, 210, 190)]
+    # the seats, empty today: club green and yellow in blocks, with white in the middle block's front row
+    palette = [(34, 120, 76), (240, 200, 40)]
     for k in range(TIERS - 1, -1, -1):
         yf = ST_FRONT - k * TIER_D
         yb = yf - TIER_D
         h = 10 + TIER_H * k
         box(s, ST_X0, yb if k < TIERS - 1 else ST_BACK, ST_X1, yf, h, (176, 176, 170))
-        # the seats along the tier (with a fan in most of them)
         x = ST_X0 + 0.25
         while x < ST_X1 - 0.2:
             sy = yb + 0.28
-            filled = rng.random() < 0.72
+            blk = int((x - ST_X0) / ((ST_X1 - ST_X0) / 4))      # four blocks along the stand
+            col = palette[(blk + k) % 2]
+            if k == 0 and blk in (1, 2):
+                col = (238, 238, 232)
             gx, gy = P(x, sy, h)
             gx, gy = round(gx), round(gy)
-            # seat back and pan
-            pygame.draw.rect(s, shade(SEAT, 0.8), (gx - 5, gy - 11, 10, 9), border_radius=2)
-            pygame.draw.rect(s, SEAT, (gx - 5, gy - 3, 10, 4), border_radius=1)
-            if filled:
-                sh = rng.choice(shirts)
-                pygame.draw.rect(s, sh, (gx - 5, gy - 15, 10, 13), border_radius=3)
-                pygame.draw.rect(s, shade(sh, 0.8), (gx + 1, gy - 15, 4, 13), border_radius=2)
-                hc = rng.choice(skin)
-                pygame.draw.circle(s, hc, (gx, gy - 19), 4)
-                pygame.draw.arc(s, rng.choice(hair), (gx - 4, gy - 23, 8, 8), 0.3, math.pi - 0.3, 2)
-                if rng.random() < 0.12:
-                    # a scarf held up, or a hand waving
-                    pygame.draw.line(s, rng.choice(shirts), (gx - 7, gy - 26), (gx + 7, gy - 28), 3)
-                elif rng.random() < 0.12:
-                    pygame.draw.line(s, hc, (gx + 4, gy - 13), (gx + 7, gy - 25), 2)
-            x += 0.42 + (0.04 if rng.random() < 0.1 else 0)
+            # seat back and pan (a little highlight on the lit, east side)
+            pygame.draw.rect(s, shade(col, 0.78), (gx - 5, gy - 12, 10, 10), border_radius=2)
+            pygame.draw.rect(s, shade(col, 0.95), (gx + 1, gy - 12, 4, 10), border_radius=2)
+            pygame.draw.rect(s, col, (gx - 5, gy - 3, 10, 4), border_radius=1)
+            x += 0.42
         # the riser's front edge: a painted line
         pygame.draw.line(s, (240, 240, 236), P(ST_X0, yf, h), P(ST_X1, yf, h), 1)
     # steps up the middle
@@ -642,16 +617,9 @@ def stadium_props(s):
         stall(s, x0, x0 + 2.1, Y0, Y1, col, kind, label, f, rng)
     # bunting along the fronts of the awnings
     bunting(s, [(x, Y1 + 0.3, 50) for x in (-2.6, -0.1, 2.4, 4.9, 7.4, 9.5)], rng)
-    # chalkboards and shoppers in the aisle
+    # chalkboards in the aisle (the market is quiet: no shoppers)
     for x, words, seed in ((-0.35, "FRESH", 1), (4.65, "LOCAL", 2), (9.9, "TODAY", 3)):
         chalkboard(s, x, Y1 + 0.75, words, fc, seed)
-    people = ((-1.6, Y1 + 1.4, (200, 70, 60), (60, 40, 30), (240, 230, 200)),
-              (1.2, Y1 + 1.15, (60, 110, 180), (200, 160, 80), None),
-              (3.5, Y1 + 1.6, (90, 150, 90), (30, 26, 24), (200, 120, 60)),
-              (6.2, Y1 + 1.25, (230, 180, 60), (150, 90, 40), None),
-              (8.6, Y1 + 1.5, (140, 80, 150), (220, 210, 190), (90, 160, 90)))
-    for k, (x, y, coat, hr, bag) in enumerate(people):
-        person(s, x, y, coat, hr, 50 + k, bag)
 
 
 def build_stadium_front():

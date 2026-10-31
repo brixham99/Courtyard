@@ -544,11 +544,13 @@ class App:
             elif kind == "goal":
                 r = data[0]
                 snd("whistle", 0.6)
-                snd("crowd_cheer", 1.0)
+                if football.CROWD:
+                    snd("crowd_cheer", 1.0)
                 if r.kind == "robot":
                     snd("robot_happy", 0.8)
             elif kind == "groan":
-                snd("crowd_groan", data)
+                if football.CROWD:
+                    snd("crowd_groan", data)
             elif kind == "save":
                 snd("slap", 0.8)
             elif kind == "tackle":
@@ -559,7 +561,8 @@ class App:
                 snd("swish", 0.3)
             elif kind == "match_over":
                 snd("whistle_long")
-                snd("crowd_cheer", 0.8)
+                if football.CROWD:
+                    snd("crowd_cheer", 0.8)
                 if data is not None and data.kind == "robot":
                     snd("robot_happy")
         g.events.clear()

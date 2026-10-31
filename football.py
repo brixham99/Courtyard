@@ -38,6 +38,7 @@ E_POST = 0.7
 ROLL_DECEL = 1.5                 # artificial grass
 ROLL_DRAG = 0.35                 # and a little drag proportional to speed
 TARGET = 5
+CROWD = False                    # the stand is empty: no cheers or groans (set True to bring the crowd sounds back)
 CHARGE_S = 1.1
 FOOT_D = 0.44                    # the ball sits this far in front of the dribbler's feet
 PICK_R = 0.5
