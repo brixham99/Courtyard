@@ -12,10 +12,11 @@ Layers:
   front       the front railings (always in front of the players)
 """
 import math
+import os
 import random
 import pygame
 
-from iso import (WIN_W, WIN_H, HW, HH, N, P, shade, mix, poly, quad_x, quad_y, quad_z, box, SHADOW_K)
+from iso import (WIN_W, WIN_H, TILE_W, HW, HH, N, P, shade, mix, poly, quad_x, quad_y, quad_z, box, SHADOW_K)
 
 BRICK = (156, 68, 50)
 MORTAR = (196, 170, 150)
@@ -507,69 +508,76 @@ def _outside_shadow(s, pts):
     s.blit(sh, (0, 0))
 
 
-PHONE_BOX = (15.6, -0.25, 1.1)       # x, y, size (tiles): beside the right-hand corner pier
-PILLAR_BOX = (-0.35, 15.0, 0.32)     # x, y, radius: beside the left-hand corner pier
-CHILD_PX = 113                       # Archie/Holly on screen (sprite 166 px x 0.68)
+PHONE_BOX = (16.15, 0.3)     # x, y of the kiosk's centre (tiles): beside the right-hand corner pier
+PILLAR_BOX = (-0.35, 15.0)   # x, y of the pillar box's centre: beside the left-hand corner pier
+CHILD_PX = 113               # Archie/Holly on screen (sprite 166 px x 0.68)
+# on-screen sprite heights (bottom corner to the top of the roof/cap). Sized to sit
+# with the village's small cottages: the kiosk ~1.4 x a child, the pillar box just taller than one
+PHONE_PX = round(CHILD_PX * 1.4)      # 158
+PILLAR_PX = round(CHILD_PX * 1.06)    # 120
+ART_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "art")
+_art = {}
+
+
+def _prop_art(name, height):
+    """A painted prop (assets/art/<name>.png, cut out of magenta by
+    tools/cut_props.py), scaled to the given on-screen height."""
+    if (name, height) not in _art:
+        img = pygame.image.load(os.path.join(ART_DIR, f"{name}.png"))
+        w, h = img.get_size()
+        _art[(name, height)] = pygame.transform.smoothscale(img, (max(1, round(w * height / h)), height))
+    return _art[(name, height)]
+
+
+def _soft_shadow(s, shapes, alpha=70, blur=4):
+    """A soft ground shadow (falling west) made of one or more polygons,
+    kept off the courtyard floor."""
+    if shapes and isinstance(shapes[0][0], (int, float)):
+        shapes = [shapes]
+    xs = [p[0] for q in shapes for p in q]; ys = [p[1] for q in shapes for p in q]
+    pad = blur * 3
+    x0, y0 = int(min(xs)) - pad, int(min(ys)) - pad
+    w, h = int(max(xs)) - x0 + pad, int(max(ys)) - y0 + pad
+    sh = pygame.Surface((w, h), pygame.SRCALPHA)
+    for q in shapes:
+        pygame.draw.polygon(sh, (30, 26, 20, alpha), [(px - x0, py - y0) for px, py in q])
+    # blur by shrinking and growing again (works in pygame and pygame-ce alike)
+    small = pygame.transform.smoothscale(sh, (max(1, w // blur), max(1, h // blur)))
+    sh = pygame.transform.smoothscale(small, (w, h))
+    full = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+    full.blit(sh, (x0, y0))
+    pygame.draw.polygon(full, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
+    s.blit(full, (0, 0))
 
 
 def draw_phone_box(s):
-    """A K6 kiosk, about 2.5 m: ~1.55 x a child's height."""
-    bx, by, w = PHONE_BOX
-    H = round(CHILD_PX * 1.55)               # 175
-    RED = (196, 28, 34)
-    d = H * SHADOW_K / HW / 2
-    _outside_shadow(s, [P(bx, by), P(bx, by + w), P(bx + w, by + w), P(bx + w - d, by + w + d), P(bx - d, by + w + d), P(bx - d, by + d)])
-    box(s, bx - 0.06, by - 0.06, bx + w + 0.06, by + w + 0.06, 8, shade(RED, 0.9))       # plinth
-    box(s, bx, by, bx + w, by + w, H - 30, RED, z0=8)
-    # glazing: 3 columns x 8 rows on the two visible sides, in a door frame
-    for side in ("x", "y"):
-        for col in range(3):
-            for row in range(8):
-                za = 26 + row * 13
-                a = 0.17 + col * 0.26
-                if side == "x":
-                    poly(s, (214, 232, 238), quad_x(bx + w + 0.005, by + a, by + a + 0.2, za, za + 10))
-                else:
-                    poly(s, (160, 186, 198), quad_y(by + w + 0.005, bx + a, bx + a + 0.2, za, za + 10))
-    # TELEPHONE signs in the crown
-    zc = H - 22
-    box(s, bx - 0.03, by - 0.03, bx + w + 0.03, by + w + 0.03, 16, shade(RED, 1.04), z0=zc - 4)
-    poly(s, (248, 246, 236), quad_x(bx + w + 0.035, by + 0.18, by + w - 0.18, zc, zc + 8))
-    poly(s, (226, 224, 214), quad_y(by + w + 0.035, bx + 0.18, bx + w - 0.18, zc, zc + 8))
-    for k in range(9):        # lettering hint
-        u = 0.24 + k * (w - 0.48) / 8
-        pygame.draw.line(s, (40, 40, 44), P(bx + w + 0.04, by + u, zc + 2), P(bx + w + 0.04, by + u, zc + 6), 1)
-        pygame.draw.line(s, (40, 40, 44), P(bx + u, by + w + 0.04, zc + 2), P(bx + u, by + w + 0.04, zc + 6), 1)
-    # the domed roof (stepped)
-    z = zc + 12
-    for k, inset in enumerate((0.0, 0.12, 0.26, 0.4)):
-        box(s, bx + inset - 0.04, by + inset - 0.04, bx + w - inset + 0.04, by + w - inset + 0.04, 5 if k < 3 else 4, shade(RED, 1.08 - 0.04 * k), z0=z)
-        z += 5
-    # door handle
-    pygame.draw.line(s, (60, 50, 40), P(bx + w + 0.01, by + 0.12, 70), P(bx + w + 0.01, by + 0.12, 90), 2)
+    """A painted K6 kiosk, standing on its square footprint beside the pier."""
+    img = _prop_art("phonebox", PHONE_PX)
+    iw, ih = img.get_size()
+    w = iw / TILE_W                          # footprint side (tiles): the sprite is as wide as its diamond
+    cx, cy = PHONE_BOX
+    bx, by = cx - w / 2, cy - w / 2
+    body = ih - iw / 2                       # height of the upright corner edge, px
+    d = body * SHADOW_K / HW / 2
+    _soft_shadow(s, [P(bx, by), P(bx, by + w), P(bx + w, by + w), P(bx + w - d, by + w + d), P(bx - d, by + w + d), P(bx - d, by + d)])
+    fx, fy = P(bx + w, by + w)               # the near ground corner = the sprite's bottom point
+    s.blit(img, (round(fx - iw * 0.495), round(fy - ih + 1)))
 
 
 def draw_pillar_box(s):
-    """A Royal Mail pillar box, about 1.6 m: a bit taller than the children."""
-    cx, cy, r = PILLAR_BOX
-    H = round(CHILD_PX * 1.12)               # 127
-    RED = (196, 28, 34)
-    d = H * SHADOW_K / HW / 2
-    gx, gy = P(cx, cy)
-    _outside_shadow(s, [P(cx + r * 0.7, cy - r * 0.7), P(cx + r * 0.7 - d, cy - r * 0.7 + d), P(cx - r * 0.7 - d, cy + r * 0.7 + d), P(cx - r * 0.7, cy + r * 0.7)])
-    _cyl(s, cx, cy, r + 0.03, 0, 10, (34, 34, 38))                   # black base
-    _cyl(s, cx, cy, r, 10, H - 18, RED)
-    _cyl(s, cx, cy, r + 0.05, H - 18, H - 12, shade(RED, 1.05))        # the cap rim
-    for k, (rr, zz) in enumerate(((r + 0.05, H - 12), (r * 0.85, H - 6), (r * 0.6, H - 2), (r * 0.3, H))):
-        _cyl(s, cx, cy, rr, zz - (4 if k else 0), zz, shade(RED, 1.05))
-        _disc(s, cx, cy, rr, zz, shade(RED, 1.12 - 0.02 * k))
-    # posting slot and the collection plate, on the side facing the viewer (+x+y)
-    fx, fy = cx + r * 0.72, cy + r * 0.72
-    sx, sy = P(fx, fy, H - 30)
-    pygame.draw.rect(s, (24, 20, 20), (round(sx) - 9, round(sy), 18, 4))
-    px, py = P(fx, fy, H - 58)
-    pygame.draw.rect(s, (238, 236, 226), (round(px) - 7, round(py), 14, 10))
-    pygame.draw.rect(s, (200, 160, 60), (round(px) - 4, round(py) + 18, 8, 7))      # cipher
+    """A painted Royal Mail pillar box on its round footprint beside the pier."""
+    img = _prop_art("pillarbox", PILLAR_PX)
+    iw, ih = img.get_size()
+    cx, cy = PILLAR_BOX
+    r = iw * 0.86 / 2 / (HW * math.sqrt(2))  # base radius (tiles) from the painted base's width
+    body = ih - iw * 0.86 / 2
+    d = body * SHADOW_K / HW / 2
+    ring = [(cx + r * math.cos(t), cy + r * math.sin(t)) for t in [i * math.pi / 12 for i in range(24)]]
+    k = r * 0.71                             # the base's top and bottom points on screen
+    _soft_shadow(s, [[P(x, y) for x, y in ring], [P(x - d, y + d) for x, y in ring],
+                     [P(cx - k, cy - k), P(cx + k, cy + k), P(cx + k - d, cy + k + d), P(cx - k - d, cy - k + d)]], blur=3)
+    ex, ey = P(cx, cy)                       # centre of the base ellipse
+    s.blit(img, (round(ex - iw * 0.503), round(ey + iw * 0.86 / 4 - ih + 1)))
 
 
 def village_props(s):
@@ -628,6 +636,15 @@ def _register_city():
 
 
 _register_city()
+
+
+def _register_stadium():
+    import stadium
+    SETTINGS["stadium"] = ("The Stadium", stadium.stadium, stadium.stadium_props, stadium.stadium_floor,
+                           stadium.stadium_back, stadium.build_stadium_front, stadium.stadium_obstacles)
+
+
+_register_stadium()
 
 
 def build_background(setting, fonts):

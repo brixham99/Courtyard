@@ -233,3 +233,86 @@ def basketball(out):
     run_until(app, lambda a: g.state == "match_over" and g.state_t < 2.5, limit=60 * 600)
     save("basketball_match_over.png", as_human=False)
     print("basketball shots in", out)
+
+
+def football(out):
+    """Football screenshots: python game.py --shots-football DIR"""
+    import math
+    import football as FB
+    import iso
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.makedirs(out, exist_ok=True)
+    app = G.App(sound=False)
+    app.sel_game = [n for n, _ in G.GAMES].index("Football")
+    app.t = 0.4
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "football_title.png"))
+
+    def save(name, as_human=True):
+        g = app.game
+        was = g.p1.ai
+        if as_human:
+            g.p1.ai = False          # draw it as the player sees it (the frame itself was played by the AI)
+        app.draw()
+        g.p1.ai = was
+        pygame.image.save(app.screen, os.path.join(out, name))
+
+    def apart(g, lo=90, hi=400):
+        p, q = iso.P(g.p1.x, g.p1.y), iso.P(g.p2.x, g.p2.y)
+        return lo < math.hypot(p[0] - q[0], p[1] - q[1]) < hi
+
+    # play: Archie dribbling up the pitch, the robot closing him down
+    app.sel_char = 0
+    for sd in range(21, 60):
+        app.start_game(player_ai=True, seed=sd)
+        g = app.game
+        if run_until(app, lambda a: g.state == "play" and g.holder is g.p1 and g.p1.moved > 0 and not g.p1.charging
+                     and 4.5 < g.p1.x < 10 and apart(g, 110, 260), limit=60 * 60):
+            break
+    save("football_play.png")
+    # a lofted shot in flight, high, with its shadow on the grass (set up so it's reliably a chip on target)
+    for sd in range(11, 60):
+        app.start_game(player_ai=False, seed=sd)
+        g = app.game
+        run_until(app, lambda a: g.state == "play", limit=60 * 5)
+        g.take(g.p1, "loose")
+        g.p1.x, g.p1.y, g.p1.facing = 8.2, 8.4, 2
+        g.p2.x, g.p2.y = 1.2, 6.0
+        g.p2.brain.react = 9
+        g.press("space")
+        g.p1.power = FB.ideal_power(math.hypot(g.p1.x - g.p1.goal.x, g.p1.y - g.p1.goal.cy)) + 0.13
+        g.shoot(g.p1)
+        c = g.ball.copy()
+        for _ in range(120):
+            c.step(1 / 60, (), 1)
+            if c.x < 0.1:
+                break
+        if FB.GOAL_Y0 + 0.3 < c.y < FB.GOAL_Y1 - 0.3 and 1.4 < c.z < FB.BAR_Z - 0.3:
+            break
+    run_until(app, lambda a: g.ball.x < 4.6 or g.state != "play", limit=60 * 3)
+    save("football_shot.png")
+    # a goal: the ball in the back of the net, the net bellying out
+    for sd in range(60, 160):
+        app.start_game(player_ai=True, seed=sd)
+        g = app.game
+        if run_until(app, lambda a: g.state == "goal" and g.last_goal and g.last_goal[1].side > 0
+                     and g.last_goal[1].net_t < 0.12, limit=60 * 120):
+            break
+    save("football_goal.png")
+    # the human view of a shot being lined up: the power meter swinging
+    app.start_game(player_ai=False, seed=3)
+    g = app.game
+    run_until(app, lambda a: g.state == "play", limit=60 * 5)
+    g.take(g.p1, "loose")
+    g.p1.x, g.p1.y, g.p1.facing = 5.0, 8.0, 2
+    g.p2.x, g.p2.y = 1.0, 7.0
+    g.p2.brain.react = 9
+    g.press("space")
+    for _ in range(int(60 * 0.5)):
+        app.update(1 / 60)
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "football_charge.png"))
+    # the end
+    app.start_game(player_ai=True, seed=304)
+    g = app.game
+    run_until(app, lambda a: g.state == "match_over" and g.state_t < 2.5, limit=60 * 600)
+    save("football_match_over.png", as_human=False)
+    print("football shots in", out)

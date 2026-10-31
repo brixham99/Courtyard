@@ -20,6 +20,12 @@ Needs Python 3.9+ (pygame-ce, numpy, Pillow).
 - The robot is it first. After that, the loser of the last round starts as it.
 - Whoever is it runs 10% faster, so a chase can be won. The robot runs at 94% of your pace.
 
+## Football rules
+- One on one against the robot in a mini stadium (a farmers market along the far side), a goal at each end. First to 5 goals wins.
+- Run into the ball to dribble it. Hold **Space** and let go with the meter in the green to shoot; too much power and it flies over the bar, too little and it trickles along the ground.
+- Without the ball, **Space** slide-tackles (miss and you're on the floor for a moment). When the robot shoots at your goal, **Space** dives.
+- Whoever concedes kicks off. The ball bounces off the posts, crossbar and side boards.
+
 ## Controls (tank-style)
 | Key | Action |
 | --- | --- |
@@ -35,12 +41,14 @@ Needs Python 3.9+ (pygame-ce, numpy, Pillow).
 - `tag.py`: the rules, movement, collisions and the robot's brain (no drawing, so it can be tested headless)
 - `scene.py`: the courtyard, its obstacles and the backgrounds. `SETTINGS` is where new surroundings go.
 - `iso.py`: the 2:1 isometric projection (64×32 tiles). The sun is in the east, so shadows fall west.
+- `football.py`, `football_view.py`, `stadium.py`: Football's rules and ball physics, its drawing, and the stadium and market scenery (`--selftest-football`, `--shots-football DIR`, `--record-football OUT.mp4 [seed]`)
 - `shots.py`: review screenshots
 - `tools/cutout.py`: cuts painted sprites out of the magenta
 - `tools/robot_frames.py`: builds the robot's enlarged head and its 8-frame walk in 4 facings from 2 painted views
 - `tools/make_sounds.py`: makes the whistle, tag slap, footsteps, robot beeps, cheer and the title tune
+- `tools/make_football_sounds.py`: the kick, post, net, board, crowd cheer and crowd groan
 - `assets/characters/`: Archie and Holly (from Daleks in Hedges / Haunted Mansion) and the robot
 - `assets/art_src/`, `assets/ref/`: the robot's painted sources and Nathan's reference
 
 ## Still to come
-Football, basketball and batdown; network play (from the Daleks in Hedges LAN code); more backgrounds.
+Network play (from the Daleks in Hedges LAN code); more backgrounds.
