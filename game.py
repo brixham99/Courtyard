@@ -1,7 +1,8 @@
 """Courtyard: playground games for Archie and Holly, on one isometric screen.
 
-Games: Tag (hands only) in the village school courtyard, and Batdown
-(throw the ball at the bat, the batter hits it away) in the park, each
+Games: Tag (hands only) in the village school courtyard, Batdown
+(throw the ball at the bat, the batter hits it away) in the park, and
+Basketball (one on one, a hoop at each end) on a city street court, each
 against the computer's robot.
 
     python game.py              play
@@ -9,6 +10,8 @@ against the computer's robot.
     python game.py --record OUT.mp4   record an AI-vs-AI demo video with sound
     python game.py --selftest   run several matches of both games' logic and exit
     python game.py --record-batdown OUT.mp4   the same for Batdown
+    python game.py --record-basketball OUT.mp4   the same for Basketball
+    python game.py --selftest-basketball / --shots-basketball DIR
 
 Controls (tank-style, as in Daleks in Hedges and Haunted Mansion):
     Left/Right (A/D)  turn a quarter turn      Up (W)  run forwards
@@ -16,6 +19,9 @@ Controls (tank-style, as in Daleks in Hedges and Haunted Mansion):
 Batdown, batting:   Space swing (hold Up as you swing to loft it), Left/Right aim left/straight/right
 Batdown, fielding:  run as above; on the chalk X: Left/Right aim, Up/Down throw type,
                     hold Space for power and let go to throw
+Basketball:         run with the ball to dribble; hold Space and let go with the meter
+                    in the green to shoot; without the ball, Space swipes for a steal
+                    or jumps to block
 """
 import json
 import math
@@ -27,6 +33,8 @@ import wave
 import numpy as np
 import pygame
 
+import basketball
+import basketball_view
 import batdown
 import batdown_view
 import scene
@@ -40,14 +48,15 @@ FPS = 60
 CH_SCALE = {"archie": 0.68, "holly": 0.68, "robot": 0.66}
 NAMES = {"archie": "Archie", "holly": "Holly", "robot": "Robot"}
 PLAYABLE = ("archie", "holly")
-GAMES = (("Tag", True), ("Football", False), ("Basketball", False), ("Batdown", True))
+GAMES = (("Tag", True), ("Football", False), ("Basketball", True), ("Batdown", True))
 TURN_KEYS = {pygame.K_LEFT: -1, pygame.K_a: -1, pygame.K_RIGHT: 1, pygame.K_d: 1}
 MOVE_KEYS = {pygame.K_UP: 1, pygame.K_w: 1, pygame.K_DOWN: -1, pygame.K_s: -1}
 GO_KEYS = (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE)
 SOUND_VOL = {"whistle": 0.6, "whistle_long": 0.6, "slap": 0.8, "boing": 0.5, "beep": 0.35, "beep_hi": 0.4,
              "step1": 0.2, "step2": 0.2, "step3": 0.2, "rstep1": 0.22, "rstep2": 0.22, "rstep3": 0.22,
              "robot_happy": 0.45, "robot_sad": 0.45, "cheer": 0.55,
-             "thock": 0.75, "clatter": 0.7, "pock": 0.35}
+             "thock": 0.75, "clatter": 0.7, "pock": 0.35,
+             "bounce": 0.5, "swish": 0.75, "clank": 0.55, "backboard": 0.6}
 MUSIC_VOL = 0.35
 
 
@@ -205,6 +214,7 @@ class App:
         self.chars = {k: Character(k) for k in ("archie", "holly", "robot")}
         self.scenes = {}
         self.bd_view = batdown_view.BatdownView(self)
+        self.bb_view = basketball_view.BasketballView(self)
         self.sound = Sound(sound)
         self.state = "title"
         self.sel_char = 0
@@ -231,10 +241,19 @@ class App:
     def title_is_bd(self):
         return GAMES[self.sel_game][0] == "Batdown"
 
+    @property
+    def is_bb(self):
+        return isinstance(self.game, basketball.BasketballGame)
+
+    def title_is_bb(self):
+        return GAMES[self.sel_game][0] == "Basketball"
+
     # -------------------------------------------------------------- flow
     def start_game(self, player_ai=False, seed=None, round_s=tag.ROUND_S, **bd):
         k = PLAYABLE[self.sel_char]
-        if self.title_is_bd():
+        if self.title_is_bb():
+            self.game = basketball.BasketballGame(k, NAMES[k], player_ai=player_ai, seed=seed, **bd)
+        elif self.title_is_bd():
             self.game = batdown.BatdownGame(k, NAMES[k], player_ai=player_ai, seed=seed,
                                             obstacles=self.scene("park")["obstacles"], **bd)
         else:
@@ -279,6 +298,8 @@ class App:
                     self.held_turn.append(e.key)
                 if e.key in MOVE_KEYS and e.key not in self.held_move:
                     self.held_move.append(e.key)
+                if self.is_bb and e.key == pygame.K_SPACE:
+                    self.game.press("space")
                 if self.is_bd:
                     name = {pygame.K_LEFT: "left", pygame.K_a: "left", pygame.K_RIGHT: "right", pygame.K_d: "right",
                             pygame.K_UP: "up", pygame.K_w: "up", pygame.K_DOWN: "down", pygame.K_s: "down",
@@ -295,6 +316,8 @@ class App:
         if e.type == pygame.KEYUP:
             if self.state == "play" and self.is_bd and e.key == pygame.K_SPACE:
                 self.game.press("space_up", self.bd_held())
+            if self.state == "play" and self.is_bb and e.key == pygame.K_SPACE:
+                self.game.press("space_up")
             if e.key in self.held_turn:
                 self.held_turn.remove(e.key)
             if e.key in self.held_move:
@@ -315,6 +338,9 @@ class App:
         g = self.game
         if self.is_bd:
             self.update_bd(dt)
+            return
+        if self.is_bb:
+            self.update_bb(dt)
             return
         g.update(dt, self.human_controls())
         if auto:
@@ -410,6 +436,66 @@ class App:
                     self.step_phase[id(r)] = c
                     base = "rstep" if r.kind == "robot" else "step"
                     snd(f"{base}{c % 3 + 1}", 0.7)
+
+    def update_bb(self, dt):
+        g = self.game
+        last_clock = g.shot_clock
+        g.update(dt, self.human_controls())
+        snd = self.sound.play
+        for kind, data in g.events:
+            if kind in ("whistle", "whistle_short"):
+                snd("whistle", 1.0 if kind == "whistle" else 0.6)
+            elif kind == "bounce":
+                snd("bounce", 0.35 + 0.65 * data)
+            elif kind == "fence":
+                snd("clank", 0.25 * data + 0.1)
+            elif kind == "clank":
+                snd("clank", data)
+            elif kind == "board":
+                snd("backboard", 0.4 + 0.6 * data)
+            elif kind == "swish":
+                snd("swish", data)
+            elif kind == "score":
+                r, pts, clean = data
+                snd("beep_hi", 0.8)
+                if r.kind == "robot":
+                    snd("robot_happy")
+                elif not r.ai:
+                    snd("cheer", 0.7 if pts == 2 else 1.0)
+            elif kind == "steal":
+                snd("slap", 0.7)
+                if data[0].kind == "robot":
+                    snd("robot_happy", 0.7)
+            elif kind == "block":
+                snd("slap", 0.9)
+                snd("boing", 0.5)
+            elif kind == "swipe":
+                snd("boing", 0.2)
+            elif kind == "shot":
+                snd("pock", 0.3)
+            elif kind == "catch":
+                snd("pock", 0.4)
+            elif kind == "shot_clock":
+                snd("whistle", 0.8)
+            elif kind == "match_over":
+                snd("whistle_long")
+                if data is not None and data.kind != "robot" and not data.ai:
+                    snd("cheer")
+                elif data is not None and data.kind == "robot":
+                    snd("robot_happy")
+        g.events.clear()
+        # the last three seconds of the shot clock tick
+        if g.state == "play" and g.holder is not None:
+            if math.ceil(g.shot_clock) != math.ceil(last_clock) and g.shot_clock < 3.0:
+                snd("beep", 0.5)
+        for r in g.runners:
+            ch = self.chars[r.kind]
+            if r.moved > 0:
+                c = int(r.walk_phase / ch.cycle * 2)
+                if self.step_phase.get(id(r)) != c:
+                    self.step_phase[id(r)] = c
+                    base = "rstep" if r.kind == "robot" else "step"
+                    snd(f"{base}{c % 3 + 1}", 0.6)
 
     # -------------------------------------------------------------- drawing: the courtyard
     def draw_runner(self, s, r, t):
@@ -722,7 +808,9 @@ class App:
 
     def draw_title(self, s, t):
         # the setting of the chosen game, dimmed
-        if self.title_is_bd():
+        if self.title_is_bb():
+            self.bb_view.draw_world(s, None, t, title=True)
+        elif self.title_is_bd():
             self.bd_view.draw_world(s, None, t, title=True)
         else:
             self.draw_world(s, [], t)
@@ -798,7 +886,12 @@ class App:
         rr = pygame.Rect(0, 0, 940, 120)
         rr.midtop = (x, pr.bottom + 14)
         self.panel(s, rr, (16, 20, 36), 200)
-        if self.title_is_bd():
+        if self.title_is_bb():
+            lines = ["Basketball: one on one, a hoop at each end. Dribble as you run; steal it or block the shot to win it back.",
+                     "Hold Space and let go with the meter in the green to shoot. 2 points a basket, 3 from beyond the arc. First to 21.",
+                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  Space shoot / swipe / jump  ·  M music  ·  Esc back",
+                     "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"]
+        elif self.title_is_bd():
             lines = ["Batdown: the fielder throws at the bat, the batter hits it away. Bat knocked down or caught on the full: swap!",
                      "Throw from the chalk X where the ball first lands. Rings score 1, 2, 3; the hedge or railings on the full 5. First to 30.",
                      "Bat: Space swing (+Up loft), Left/Right aim  ·  Field: run to the X, Left/Right aim, Up/Down throw, hold Space",
@@ -818,6 +911,9 @@ class App:
         elif self.is_bd:
             self.bd_view.draw_world(s, self.game, self.t)
             self.bd_view.draw_hud(s, self.game, self.t)
+        elif self.is_bb:
+            self.bb_view.draw_world(s, self.game, self.t)
+            self.bb_view.draw_hud(s, self.game, self.t)
         else:
             self.draw_world(s, self.game.runners, self.t, self.game)
             self.draw_hud(s, self.game)
@@ -894,6 +990,39 @@ def selftest_batdown(matches=6):
               f"{steps / 30:.0f}s  winner {w}  {g.stats}")
     assert tot["hits"] > 0 and tot["bat_down"] > 0 and tot["caught"] > 0, tot
     print("batdown selftest ok", tot)
+
+
+def selftest_basketball(matches=6):
+    """AI against AI: every match must reach 21, with baskets at both ends."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    app = App(sound=False)
+    app.sel_game = [n for n, _ in GAMES].index("Basketball")
+    tot = {}
+    for m in range(matches):
+        app.sel_char = m % 2
+        app.start_game(player_ai=True, seed=200 + m)
+        g = app.game
+        steps = 0
+        while g.state != "match_over":
+            app.update(1 / 30)
+            if steps % 20 == 0:
+                app.draw()
+            steps += 1
+            assert steps < 30 * 900, f"match never ended ({g.state})"
+            for r in g.runners:
+                assert 0 <= r.x <= N and 0 <= r.y <= N
+            b = g.ball
+            assert -0.01 <= b.x <= N + 0.01 and -0.01 <= b.y <= N + 0.01 and b.z >= -0.01, "ball escaped"
+        assert max(g.p1.score, g.p2.score) >= g.target
+        for r in g.runners:
+            assert not g.world.blocked(r.x, r.y, tag.RADIUS * 0.9), "ended inside something"
+            assert r.made2 + r.made3 > 0, f"{r.name} never scored"
+        for k, v in g.stats.items():
+            tot[k] = tot.get(k, 0) + v
+        w = g.winner.name if g.winner else "draw"
+        print(f"basketball {m + 1}: {g.p1.name} {g.p1.score} v Robot {g.p2.score}  {steps / 30:.0f}s  winner {w}  {g.stats}")
+    assert tot["made"] > 0 and tot["threes"] > 0 and tot["steals"] > 0 and tot["blocks"] > 0, tot
+    print("basketball selftest ok", tot)
 
 
 def mix_audio(log, dur, out_wav, game_from=None):
@@ -1013,12 +1142,62 @@ def record_batdown(out, seconds=28, fps=30, seed=None):
     print("wrote", out, "stats", app.game.stats, "score", app.game.p1.score, app.game.p2.score)
 
 
+def record_basketball(out, seconds=28, fps=30, seed=None):
+    """A Basketball demo: the title with Basketball picked, then the robot against an AI Holly."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    app = App(sound=False)
+    seed = 5 if seed is None else seed
+    tmp_v = out + ".video.mp4"
+    tmp_a = out + ".wav"
+    ff = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{WIN_W}x{WIN_H}",
+                           "-r", str(fps), "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", tmp_v],
+                          stdin=subprocess.PIPE)
+    dt = 1 / fps
+    frames = int(seconds * fps)
+    title_frames = int(3.0 * fps)
+    for f in range(frames):
+        if f < title_frames:
+            for when, idx in ((0.6, 1), (1.1, 2)):
+                if f == int(when * fps):
+                    app.sel_game = idx
+                    app.sound.play("beep")
+            if f == int(1.8 * fps):
+                app.sel_char = 1
+                app.sound.play("beep")
+        if f == title_frames:
+            app.sound.play("beep_hi")
+            app.start_game(player_ai=True, seed=seed)
+            app.game.state_t = 1.6          # a shorter tip-off card for the demo
+        app.update(dt, auto=True)
+        app.draw()
+        ff.stdin.write(pygame.image.tobytes(app.screen, "RGB"))
+    ff.stdin.close()
+    ff.wait()
+    mix_audio(app.sound.log, seconds, tmp_a, game_from=title_frames / fps)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp_v, "-i", tmp_a, "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+                    "-shortest", "-movflags", "+faststart", out], check=True)
+    os.remove(tmp_v)
+    os.remove(tmp_a)
+    g = app.game
+    print("wrote", out, "stats", g.stats, "score", g.p1.score, g.p2.score)
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         selftest()
         selftest_batdown()
+        selftest_basketball()
     elif "--selftest-batdown" in sys.argv:
         selftest_batdown()
+    elif "--selftest-basketball" in sys.argv:
+        selftest_basketball()
+    elif "--record-basketball" in sys.argv:
+        i = sys.argv.index("--record-basketball")
+        seed = int(sys.argv[i + 2]) if len(sys.argv) > i + 2 else None
+        record_basketball(sys.argv[i + 1], seed=seed)
+    elif "--shots-basketball" in sys.argv:
+        import shots
+        shots.basketball(sys.argv[sys.argv.index("--shots-basketball") + 1])
     elif "--record-batdown" in sys.argv:
         i = sys.argv.index("--record-batdown")
         seed = int(sys.argv[i + 2]) if len(sys.argv) > i + 2 else None

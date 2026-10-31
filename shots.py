@@ -156,3 +156,80 @@ def batdown(out):
     run_until(app, lambda a: g.state == "match_over", limit=60 * 600)
     save("batdown_match_over.png", as_human=False)
     print("batdown shots in", out)
+
+
+def basketball(out):
+    """Basketball screenshots: python game.py --shots-basketball DIR"""
+    import math
+    import basketball as BB
+    import iso
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.makedirs(out, exist_ok=True)
+    app = G.App(sound=False)
+    app.sel_game = [n for n, _ in G.GAMES].index("Basketball")
+    app.t = 0.4
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "basketball_title.png"))
+
+    def save(name, as_human=True):
+        g = app.game
+        was = g.p1.ai
+        if as_human:
+            g.p1.ai = False          # draw it as the player sees it (the frame itself was played by the AI)
+        app.draw()
+        g.p1.ai = was
+        pygame.image.save(app.screen, os.path.join(out, name))
+
+    # play: Archie dribbling up the court, the robot defending
+    app.sel_char = 0
+    app.start_game(player_ai=True, seed=21)
+    g = app.game
+
+    def dribbling(a):
+        if not (g.state == "play" and g.holder is g.p1 and g.p1.moved > 0 and not g.p1.charging):
+            return False
+        p, q = iso.P(g.p1.x, g.p1.y), iso.P(g.p2.x, g.p2.y)
+        return 90 < math.hypot(p[0] - q[0], p[1] - q[1]) < 260 and g.ball.z > 0.7
+    run_until(app, dribbling, limit=60 * 120)
+    save("basketball_play.png")
+    # a shot in the air, near the top of its arc, the players clear of each other
+    def apart(min_px=110):
+        p, q = iso.P(g.p1.x, g.p1.y), iso.P(g.p2.x, g.p2.y)
+        return math.hypot(p[0] - q[0], p[1] - q[1]) > min_px
+
+    for sd in range(30, 80):
+        app.start_game(player_ai=True, seed=sd)
+        g = app.game
+        if run_until(app, lambda a: g.state == "play" and g.holder is None and g.ball.shot_by is not None
+                     and g.ball.vz < 0.6 and g.ball.z > BB.RIM_Z and g.ball.age < 2 and apart(62)
+                     and g.ball.shot_by is g.p1, limit=60 * 60):
+            break
+    save("basketball_shot.png")
+    # a basket: the ball dropping through the net
+    for sd in range(80, 140):
+        app.start_game(player_ai=True, seed=sd)
+        g = app.game
+        if run_until(app, lambda a: g.state == "scored" and g.ball.through is not None
+                     and BB.RIM_Z - 1.0 < g.ball.z < BB.RIM_Z - 0.35 and apart(90), limit=60 * 90):
+            break
+    for _ in range(6):
+        app.update(1 / 60)
+    save("basketball_score.png")
+    # the human view of a shot being lined up: the power meter swinging
+    app.start_game(player_ai=False, seed=3)
+    g = app.game
+    run_until(app, lambda a: g.state == "play", limit=60 * 5)
+    if g.holder is not g.p1:
+        g.give(g.p1)
+    g.p1.x, g.p1.y = 8.6, 9.0
+    g.p2.x, g.p2.y = 10.6, 6.0
+    g.p2.brain.react = 9
+    g.press("space")
+    for _ in range(int(60 * 0.5)):
+        app.update(1 / 60)
+    app.draw(); pygame.image.save(app.screen, os.path.join(out, "basketball_charge.png"))
+    # the end
+    app.start_game(player_ai=True, seed=204)
+    g = app.game
+    run_until(app, lambda a: g.state == "match_over" and g.state_t < 2.5, limit=60 * 600)
+    save("basketball_match_over.png", as_human=False)
+    print("basketball shots in", out)

@@ -621,6 +621,15 @@ def _register_park():
 _register_park()
 
 
+def _register_city():
+    import city
+    SETTINGS["city"] = ("The City", city.city, city.city_props, city.city_floor, city.city_back,
+                        city.build_city_front, city.city_obstacles)
+
+
+_register_city()
+
+
 def build_background(setting, fonts):
     # explicit 24-bit, no alpha: on macOS the display format carries an alpha
     # channel, so a default Surface came out fully transparent there
