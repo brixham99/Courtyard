@@ -286,8 +286,6 @@ def draw_bench(s, o):
 class TreeArt:
     def __init__(self):
         self.canopy = tree_surface(42, 74)
-        self.canopy_ghost = self.canopy.copy()
-        self.canopy_ghost.set_alpha(110)
 
 
 def draw_tree_base(s, o):
@@ -343,7 +341,7 @@ def draw_obstacle_shadows(s, obstacles):
 # ------------------------------------------------------------------ settings
 def village_school(s, fonts):
     """An English village: a Victorian red-brick school down the left, a row of
-    pastel cottages (Brixham-style) along the right, a clock tower between."""
+    pastel cottages (Brixham-style) along the right, ending in a clock tower."""
     rng = random.Random(7)
     # sky
     for y in range(WIN_H):
@@ -417,7 +415,7 @@ def village_school(s, fonts):
             pygame.draw.rect(s, (170, 90, 60), (*[round(v) for v in P(xr, yc + 0.15 + k * 0.3, h + 86)], 5, 8))
 
     # --- the cottages, along the y < 0 side
-    X0, X1, Y0, Y1, H = -1.6, 15.8, -4.4, -1.6, 116
+    X0, X1, Y0, Y1, H = -1.6, 12.4, -4.4, -1.6, 116
     colours = [(238, 226, 196), (172, 206, 222), (236, 184, 168), (190, 214, 176), (246, 222, 140)]
     doors = [(40, 70, 120), (170, 40, 40), (40, 100, 70), (30, 30, 34), (90, 60, 120)]
     cw = (X1 - X0) / 5
@@ -426,12 +424,12 @@ def village_school(s, fonts):
         c = colours[i]
         poly(s, shade(c, 0.8), quad_y(Y1, a, b, 0, H))
         poly(s, shade(c, 0.7), quad_y(Y1 + 0.01, a, b, 0, 8))
-        window_y(s, Y1 + 0.01, a + 0.4, a + 1.2, 16, 52)
-        window_y(s, Y1 + 0.01, a + 0.4, a + 1.2, 70, 104)
-        window_y(s, Y1 + 0.01, a + 1.8, a + 2.6, 70, 104)
-        poly(s, shade(STONE, 0.8), quad_y(Y1 + 0.01, a + 1.75, a + 2.65, 0, 58))
-        poly(s, doors[i], quad_y(Y1 + 0.02, a + 1.85, a + 2.55, 0, 52))
-        pygame.draw.circle(s, (220, 190, 90), [round(v) for v in P(a + 2.4, Y1 + 0.02, 26)], 2)
+        window_y(s, Y1 + 0.01, a + 0.3, a + 1.0, 16, 52)
+        window_y(s, Y1 + 0.01, a + 0.3, a + 1.0, 70, 104)
+        window_y(s, Y1 + 0.01, a + 1.6, a + 2.3, 70, 104)
+        poly(s, shade(STONE, 0.8), quad_y(Y1 + 0.01, a + 1.55, a + 2.35, 0, 58))
+        poly(s, doors[i], quad_y(Y1 + 0.02, a + 1.65, a + 2.25, 0, 52))
+        pygame.draw.circle(s, (220, 190, 90), [round(v) for v in P(a + 2.1, Y1 + 0.02, 26)], 2)
         pygame.draw.line(s, shade(c, 0.6), P(b, Y1 + 0.01, 0), P(b, Y1 + 0.01, H), 1)
     # house numbers would go here; a hanging basket on the middle house
     hb = P(X0 + 2.5 * cw, Y1 + 0.2, 64)
@@ -458,48 +456,130 @@ def village_school(s, fonts):
             p = P(xc + 0.15 + k * 0.3, yr, H + 82)
             pygame.draw.rect(s, (180, 96, 64), (round(p[0]) - 2, round(p[1]), 5, 8))
 
-    # --- the clock tower in the corner between them
-    tx0, ty0, tx1, ty1, th = -4.4, -4.4, -1.6, -1.6, 168
+    # --- the clock tower at the right-hand end of the cottage row (clear of the
+    #     courtyard tree and below the HUD bar)
+    tx0, ty0, tx1, ty1, th = 12.5, -4.4, 15.1, -1.8, 206
     bricks_x(s, tx1, ty0, ty1, 0, th, shade(BRICK, 1.05), rng)
     bricks_y(s, ty1, tx0, tx1, 0, th, shade(BRICK, 0.8), rng)
-    poly(s, STONE, quad_x(tx1 + 0.01, ty0, ty1, th - 10, th))
-    poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, th - 10, th))
-    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 128, 0.75, 24)
-    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 128, 0.75, 24)
-    window_x(s, tx1 + 0.01, -3.4, -2.6, 40, 86)
-    window_y(s, ty1 + 0.01, -3.4, -2.6, 40, 86)
-    apex = P((tx0 + tx1) / 2, (ty0 + ty1) / 2, th + 110)
+    for z in (0, 96):
+        poly(s, STONE, quad_x(tx1 + 0.01, ty0, ty1, z, z + 6))
+        poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, z, z + 6))
+    poly(s, STONE, quad_x(tx1 + 0.01, ty0, ty1, th - 12, th))
+    poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, th - 12, th))
+    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 160, 0.8, 26)
+    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 160, 0.8, 26)
+    tm, tn = (ty0 + ty1) / 2, (tx0 + tx1) / 2
+    window_x(s, tx1 + 0.01, tm - 0.35, tm + 0.35, 106, 140)
+    window_y(s, ty1 + 0.01, tn - 0.35, tn + 0.35, 106, 140)
+    # arched doorway on the front
+    poly(s, shade(STONE, 0.8), quad_y(ty1 + 0.01, tn - 0.55, tn + 0.55, 0, 66))
+    poly(s, (60, 40, 30), quad_y(ty1 + 0.02, tn - 0.42, tn + 0.42, 0, 58))
+    window_x(s, tx1 + 0.01, tm - 0.3, tm + 0.3, 30, 76)
+    apex = P(tn, tm, th + 84)
     poly(s, (62, 70, 80), [P(tx0 - 0.15, ty1 + 0.15, th), P(tx1 + 0.15, ty1 + 0.15, th), apex])
     poly(s, (86, 96, 108), [P(tx1 + 0.15, ty1 + 0.15, th), P(tx1 + 0.15, ty0 - 0.15, th), apex])
-    pygame.draw.line(s, (200, 160, 60), apex, (apex[0], apex[1] - 22), 2)
-    pygame.draw.polygon(s, (200, 160, 60), [(apex[0], apex[1] - 22), (apex[0] + 12, apex[1] - 18), (apex[0], apex[1] - 14)])
+    pygame.draw.line(s, (200, 160, 60), apex, (apex[0], apex[1] - 20), 2)
+    pygame.draw.polygon(s, (200, 160, 60), [(apex[0], apex[1] - 20), (apex[0] + 11, apex[1] - 16), (apex[0], apex[1] - 12)])
 
-    # --- outside the railings: trees, a red telephone box, a post box, flowerbeds
+
+
+def _cyl(s, cx, cy, r, z0, z1, col, segs=28):
+    """The visible (front) half of an upright cylinder, lit from +x."""
+    for i in range(segs):
+        t0, t1 = i * 2 * math.pi / segs, (i + 1) * 2 * math.pi / segs
+        nx, ny = math.cos((t0 + t1) / 2), math.sin((t0 + t1) / 2)
+        if nx + ny < -0.05:
+            continue
+        light = 0.74 + 0.32 * nx - 0.04 * ny
+        poly(s, shade(col, light), [P(cx + r * math.cos(t0), cy + r * math.sin(t0), z0), P(cx + r * math.cos(t1), cy + r * math.sin(t1), z0),
+                                    P(cx + r * math.cos(t1), cy + r * math.sin(t1), z1), P(cx + r * math.cos(t0), cy + r * math.sin(t0), z1)])
+
+
+def _disc(s, cx, cy, r, z, col):
+    poly(s, col, [P(cx + r * math.cos(t), cy + r * math.sin(t), z) for t in [i * 2 * math.pi / 28 for i in range(28)]])
+
+
+def _outside_shadow(s, pts):
+    """A soft ground shadow (falling west), kept off the courtyard floor."""
+    sh = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+    pygame.draw.polygon(sh, (30, 26, 20, 75), pts)
+    pygame.draw.polygon(sh, (0, 0, 0, 0), quad_z(-0.3, -0.3, N + 0.25, N + 0.25, 0))
+    s.blit(sh, (0, 0))
+
+
+PHONE_BOX = (15.6, -0.25, 1.1)       # x, y, size (tiles): beside the right-hand corner pier
+PILLAR_BOX = (-0.35, 15.0, 0.32)     # x, y, radius: beside the left-hand corner pier
+CHILD_PX = 113                       # Archie/Holly on screen (sprite 166 px x 0.68)
+
+
+def draw_phone_box(s):
+    """A K6 kiosk, about 2.5 m: ~1.55 x a child's height."""
+    bx, by, w = PHONE_BOX
+    H = round(CHILD_PX * 1.55)               # 175
+    RED = (196, 28, 34)
+    d = H * SHADOW_K / HW / 2
+    _outside_shadow(s, [P(bx, by), P(bx, by + w), P(bx + w, by + w), P(bx + w - d, by + w + d), P(bx - d, by + w + d), P(bx - d, by + d)])
+    box(s, bx - 0.06, by - 0.06, bx + w + 0.06, by + w + 0.06, 8, shade(RED, 0.9))       # plinth
+    box(s, bx, by, bx + w, by + w, H - 30, RED, z0=8)
+    # glazing: 3 columns x 8 rows on the two visible sides, in a door frame
+    for side in ("x", "y"):
+        for col in range(3):
+            for row in range(8):
+                za = 26 + row * 13
+                a = 0.17 + col * 0.26
+                if side == "x":
+                    poly(s, (214, 232, 238), quad_x(bx + w + 0.005, by + a, by + a + 0.2, za, za + 10))
+                else:
+                    poly(s, (160, 186, 198), quad_y(by + w + 0.005, bx + a, bx + a + 0.2, za, za + 10))
+    # TELEPHONE signs in the crown
+    zc = H - 22
+    box(s, bx - 0.03, by - 0.03, bx + w + 0.03, by + w + 0.03, 16, shade(RED, 1.04), z0=zc - 4)
+    poly(s, (248, 246, 236), quad_x(bx + w + 0.035, by + 0.18, by + w - 0.18, zc, zc + 8))
+    poly(s, (226, 224, 214), quad_y(by + w + 0.035, bx + 0.18, bx + w - 0.18, zc, zc + 8))
+    for k in range(9):        # lettering hint
+        u = 0.24 + k * (w - 0.48) / 8
+        pygame.draw.line(s, (40, 40, 44), P(bx + w + 0.04, by + u, zc + 2), P(bx + w + 0.04, by + u, zc + 6), 1)
+        pygame.draw.line(s, (40, 40, 44), P(bx + u, by + w + 0.04, zc + 2), P(bx + u, by + w + 0.04, zc + 6), 1)
+    # the domed roof (stepped)
+    z = zc + 12
+    for k, inset in enumerate((0.0, 0.12, 0.26, 0.4)):
+        box(s, bx + inset - 0.04, by + inset - 0.04, bx + w - inset + 0.04, by + w - inset + 0.04, 5 if k < 3 else 4, shade(RED, 1.08 - 0.04 * k), z0=z)
+        z += 5
+    # door handle
+    pygame.draw.line(s, (60, 50, 40), P(bx + w + 0.01, by + 0.12, 70), P(bx + w + 0.01, by + 0.12, 90), 2)
+
+
+def draw_pillar_box(s):
+    """A Royal Mail pillar box, about 1.6 m: a bit taller than the children."""
+    cx, cy, r = PILLAR_BOX
+    H = round(CHILD_PX * 1.12)               # 127
+    RED = (196, 28, 34)
+    d = H * SHADOW_K / HW / 2
+    gx, gy = P(cx, cy)
+    _outside_shadow(s, [P(cx + r * 0.7, cy - r * 0.7), P(cx + r * 0.7 - d, cy - r * 0.7 + d), P(cx - r * 0.7 - d, cy + r * 0.7 + d), P(cx - r * 0.7, cy + r * 0.7)])
+    _cyl(s, cx, cy, r + 0.03, 0, 10, (34, 34, 38))                   # black base
+    _cyl(s, cx, cy, r, 10, H - 18, RED)
+    _cyl(s, cx, cy, r + 0.05, H - 18, H - 12, shade(RED, 1.05))        # the cap rim
+    for k, (rr, zz) in enumerate(((r + 0.05, H - 12), (r * 0.85, H - 6), (r * 0.6, H - 2), (r * 0.3, H))):
+        _cyl(s, cx, cy, rr, zz - (4 if k else 0), zz, shade(RED, 1.05))
+        _disc(s, cx, cy, rr, zz, shade(RED, 1.12 - 0.02 * k))
+    # posting slot and the collection plate, on the side facing the viewer (+x+y)
+    fx, fy = cx + r * 0.72, cy + r * 0.72
+    sx, sy = P(fx, fy, H - 30)
+    pygame.draw.rect(s, (24, 20, 20), (round(sx) - 9, round(sy), 18, 4))
+    px, py = P(fx, fy, H - 58)
+    pygame.draw.rect(s, (238, 236, 226), (round(px) - 7, round(py), 14, 10))
+    pygame.draw.rect(s, (200, 160, 60), (round(px) - 4, round(py) + 18, 8, 7))      # cipher
+
+
+def village_props(s):
+    """Things outside the railings, drawn after the floor so nothing covers them;
+    placed beside the corner piers so the front railings never cross them."""
+    rng = random.Random(9)
     draw_tree(s, 17.6, -0.6, 3, 62, 86)
     draw_tree(s, -0.8, 17.6, 4, 62, 86)
-    # telephone box (K6-style red kiosk)
-    bx, by = 16.0, 4.6
-    RED = (200, 30, 36)
-    box(s, bx, by, bx + 0.55, by + 0.55, 72, RED)
-    for side in ("x", "y"):
-        for k in range(3):
-            for m in range(2):
-                if side == "x":
-                    poly(s, (210, 230, 236), quad_x(bx + 0.551, by + 0.08 + m * 0.2, by + 0.25 + m * 0.2, 14 + k * 16, 26 + k * 16))
-                else:
-                    poly(s, (170, 196, 206), quad_y(by + 0.551, bx + 0.08 + m * 0.2, bx + 0.25 + m * 0.2, 14 + k * 16, 26 + k * 16))
-    poly(s, (240, 240, 240), quad_x(bx + 0.552, by + 0.1, by + 0.45, 62, 68))
-    poly(s, shade(RED, 1.1), [P(bx - 0.03, by - 0.03, 72), P(bx + 0.58, by - 0.03, 72), P(bx + 0.58, by + 0.58, 72), P(bx - 0.03, by + 0.58, 72)])
-    top = P(bx + 0.27, by + 0.27, 84)
-    poly(s, shade(RED, 1.15), [P(bx + 0.58, by - 0.03, 72), P(bx + 0.58, by + 0.58, 72), top])
-    poly(s, shade(RED, 0.85), [P(bx - 0.03, by + 0.58, 72), P(bx + 0.58, by + 0.58, 72), top])
-    # pillar box
-    gx, gy = P(3.2, 16.0)
-    pygame.draw.ellipse(s, (30, 26, 20), (gx - 16, gy - 6, 26, 10))
-    pygame.draw.rect(s, (200, 30, 36), (gx - 9, gy - 40, 18, 40))
-    pygame.draw.rect(s, (230, 60, 60), (gx + 2, gy - 40, 5, 40))
-    pygame.draw.ellipse(s, (210, 36, 40), (gx - 10, gy - 47, 20, 12))
-    pygame.draw.rect(s, (20, 20, 20), (gx - 6, gy - 30, 12, 3))
+    draw_phone_box(s)
+    draw_pillar_box(s)
     # flowerbeds along the front verges
     cols = [(220, 60, 70), (250, 210, 70), (240, 240, 250), (170, 90, 200)]
     for (a, b) in ((N + 1.6, 7.0), (N + 1.6, 10.5), (7.0, N + 1.6), (10.5, N + 1.6)):
@@ -511,7 +591,7 @@ def village_school(s, fonts):
         xs = [p[0] for p in q]; ys = [p[1] for p in q]
         for k in range(26):
             px, py = rng.uniform(min(xs) + 6, max(xs) - 6), rng.uniform(min(ys) + 4, max(ys) - 4)
-            if pygame.Rect(0, 0, 1, 1).collidepoint(0, 0) and _inside(q, (px, py)):
+            if _inside(q, (px, py)):
                 pygame.draw.circle(s, (60, 120, 50), (round(px), round(py)), 4)
                 pygame.draw.circle(s, rng.choice(cols), (round(px), round(py) - 2), 2)
 
@@ -528,7 +608,7 @@ def _inside(q, p):
     return inside
 
 
-SETTINGS = {"village_school": ("Village School", village_school)}
+SETTINGS = {"village_school": ("Village School", village_school, village_props)}
 
 
 def build_background(setting, fonts):
@@ -539,4 +619,6 @@ def build_background(setting, fonts):
     rng = random.Random(11)
     draw_floor(s, rng)
     draw_back_walls(s, rng)
+    if len(SETTINGS[setting]) > 2:
+        SETTINGS[setting][2](s)      # props outside the railings, over the floor
     return s

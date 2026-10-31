@@ -18,6 +18,7 @@ import subprocess
 import sys
 import wave
 
+import numpy as np
 import pygame
 
 import scene
@@ -190,7 +191,6 @@ class App:
         self.bg = self.bg.convert()   # opaque copy in the display's own format
         self.front = scene.build_front()
         self.tree_art = scene.TreeArt()
-        self.canopy_mask = None
         self.contact = pygame.Surface((32, 12), pygame.SRCALPHA)
         pygame.draw.ellipse(self.contact, (20, 22, 14, 90), self.contact.get_rect())
         self.chars = {k: Character(k) for k in ("archie", "holly", "robot")}
@@ -362,11 +362,9 @@ class App:
             elif o.kind == "tree":
                 scene.draw_tree_base(s, o)
                 tree_items.append(o)
-        # the canopy goes over everything inside; see-through if it hides a player
+        # the canopy goes over everything inside (fully opaque)
         for o in tree_items:
-            cr = scene.tree_canopy_rect(o, self.tree_art)
-            ghost = any((r.x + r.y) < (o.x + o.y) + 0.6 and self.hidden_by(rects[id(r)], cr) for r in runners)
-            s.blit(self.tree_art.canopy_ghost if ghost else self.tree_art.canopy, cr)
+            s.blit(self.tree_art.canopy, scene.tree_canopy_rect(o, self.tree_art))
         s.blit(self.front, (0, 0))
         # markers above heads (always on top)
         if game:
@@ -375,16 +373,6 @@ class App:
             for fx in game.tag_fx:
                 self.draw_tag_fx(s, fx)
         return rects
-
-    def hidden_by(self, rect, cr):
-        """Does the canopy (at cr) cover a good part of a player's sprite rect?"""
-        if not rect.colliderect(cr):
-            return False
-        if self.canopy_mask is None:
-            self.canopy_mask = pygame.mask.from_surface(self.tree_art.canopy, 60)
-        box = pygame.mask.Mask(rect.size, fill=True)
-        n = self.canopy_mask.overlap_area(box, (rect.x - cr.x, rect.y - cr.y))
-        return n > rect.w * rect.h * 0.12
 
     @staticmethod
     def ob_depth(o):
@@ -585,6 +573,48 @@ class App:
             y += im.get_height() + 8
 
     # -------------------------------------------------------------- title
+    # ---------------------------------------------------------------- spotlight
+    SPOT_W, SPOT_H = 172, 48                       # the pool of light, a 2:1-ish iso ellipse
+
+    def spot_surfaces(self, beam_h):
+        """Additive (premultiplied) light: a feathered elliptical pool and a soft beam."""
+        if getattr(self, "_spot", None) and self._spot[0] == beam_h:
+            return self._spot[1], self._spot[2]
+        warm = np.array([255, 236, 196], dtype=float)
+        w, h = self.SPOT_W, self.SPOT_H
+        yy, xx = np.mgrid[0:h, 0:w]
+        d = np.sqrt(((xx - (w - 1) / 2) / (w / 2)) ** 2 + ((yy - (h - 1) / 2) / (h / 2)) ** 2)
+        a = np.clip(1 - d * d, 0, 1) ** 1.3 * 0.55 + np.clip(1 - d / 0.5, 0, 1) ** 1.5 * 0.3
+        pool = pygame.surfarray.make_surface((warm[None, None, :] * a.T[:, :, None]).astype(np.uint8))
+        # beam: narrow at the top, as wide as the pool at the bottom, fading upwards
+        bw = w
+        yy, xx = np.mgrid[0:beam_h, 0:bw]
+        v = yy / max(1, beam_h - 1)                          # 0 at the top, 1 at the floor
+        half = 16 + (bw / 2 - 22 - 16) * v
+        u = np.abs(xx - (bw - 1) / 2) / half
+        a = np.clip(1 - u, 0, 1) ** 1.1 * (0.10 + 0.26 * v ** 1.2)
+        beam = pygame.surfarray.make_surface((warm[None, None, :] * a.T[:, :, None]).astype(np.uint8))
+        self._spot = (beam_h, pool, beam)
+        return pool, beam
+
+    def draw_spotlight(self, s, pr, t):
+        target = pr.x + 130 + self.sel_char * 190
+        last = getattr(self, "_spot_t", None)
+        if last is None or not (0 <= t - last < 0.5) or getattr(self, "spot_x", None) is None:
+            self.spot_x = float(target)                     # first frame or a jump: snap
+        else:
+            self.spot_x += (target - self.spot_x) * (1 - math.exp(-(t - last) * 9))
+        self._spot_t = t
+        floor_y = pr.y + 247
+        top = pr.y + 44
+        pool, beam = self.spot_surfaces(floor_y - top)
+        x = round(self.spot_x)
+        flick = 1.0 + 0.03 * math.sin(t * 7.3)            # the faintest shimmer
+        s.blit(beam, (x - beam.get_width() // 2, top), special_flags=pygame.BLEND_RGB_ADD)
+        p = pool if abs(flick - 1) < 1e-3 else pygame.transform.smoothscale(
+            pool, (round(self.SPOT_W * flick), round(self.SPOT_H * flick)))
+        s.blit(p, (x - p.get_width() // 2, floor_y - p.get_height() // 2), special_flags=pygame.BLEND_RGB_ADD)
+
     def draw_title(self, s, t):
         # the courtyard with the three of them standing about, dimmed
         self.draw_world(s, [], t)
@@ -619,10 +649,14 @@ class App:
             ch = self.chars[k]
             cxp = pr.x + 130 + i * 190
             sel = i == self.sel_char
-            if sel:
-                pygame.draw.ellipse(s, (255, 220, 80), (cxp - 62, pr.y + 232, 124, 30), 3)
+            if i == 0:
+                self.draw_spotlight(s, pr, t)
             img = ch.walk["se"][int(t * 10) % ch.frames] if sel else ch.still["se"]
             img = pygame.transform.smoothscale(img, (round(img.get_width() * 1.5), round(img.get_height() * 1.5)))
+            lit = max(0.0, 1 - abs(self.spot_x - cxp) / 120)
+            if lit > 0.02:     # lit by the spotlight: a touch brighter and warmer
+                img = img.copy()
+                img.fill((round(34 * lit), round(28 * lit), round(14 * lit)), special_flags=pygame.BLEND_RGB_ADD)
             ax, ay = ch.anchor["se"]
             s.blit(img, (cxp - ax * 1.5, pr.y + 248 - ay * 1.5))
             self.text(s, self.f_mid, NAMES[k], (255, 255, 255) if sel else (150, 156, 170), (cxp, pr.y + 262), "midtop")
