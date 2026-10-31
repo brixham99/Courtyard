@@ -43,7 +43,7 @@ BAR_PX = 128
 # the stand
 ST_X0, ST_X1 = 0.6, 13.4
 ST_FRONT = -0.8                  # the front of the lowest tier
-TIER_D, TIER_H, TIERS = 0.62, 16, 4
+TIER_D, TIER_H, TIERS = 0.82, 22, 3
 ST_BACK = ST_FRONT - TIER_D * TIERS - 0.1
 ROOF_Z0, ROOF_Z1 = 120, 132      # roof height at the front and the back
 # the scoreboard, on the roof's front edge (football_view draws the live score)
@@ -302,7 +302,7 @@ def stall(s, x0, x1, y0, y1, stripe, kind, label, font, rng):
     text_on_y_plane(s, font, label, shade(stripe, 0.55), xm, y1 + 0.33, TOP_F + 7.5)
 
 
-def bunting(s, pts, rng, z_low=58):
+def bunting(s, pts, rng, z_low=58, sag=8):
     """Strings of little flags between points (world xy, z px), sagging between them."""
     cols = [(220, 50, 50), (250, 200, 40), (60, 140, 220), (80, 180, 90), (250, 250, 250), (240, 120, 180)]
     k = 0
@@ -311,8 +311,8 @@ def bunting(s, pts, rng, z_low=58):
         line = []
         for i in range(n + 1):
             t = i / n
-            sag = 8 * math.sin(math.pi * t)
-            line.append(P(xa + (xb - xa) * t, ya + (yb - ya) * t, za + (zb - za) * t - sag))
+            dz = sag * math.sin(math.pi * t)
+            line.append(P(xa + (xb - xa) * t, ya + (yb - ya) * t, za + (zb - za) * t - dz))
         aa.lines(s, (90, 90, 90), False, line, 1)
         for i in range(n):
             (ax, ay), (bx, by) = line[i], line[i + 1]
@@ -526,8 +526,26 @@ def stadium_back(s, rng):
     aa.line(s, G, P(-0.02, 0, CAGE_H), P(-0.02, N, CAGE_H), 2)
 
 
+SEAT_PITCH = 0.62                # seat spacing along a row (tiles)
+
+
+def seat(s, x, y, h, col):
+    """One tip-up seat facing the pitch (+y): a pan and a back, 0.46 tiles wide."""
+    a, b = x - 0.23, x + 0.23
+    back = y - 0.05
+    # the back: its face towards the pitch, and its lit +x edge
+    poly(s, shade(col, 0.8), quad_y(back, a, b, h + 9, h + 26))
+    poly(s, shade(col, 0.62), quad_x(b, back - 0.06, back, h + 9, h + 26))
+    poly(s, shade(col, 1.08), quad_z(a, back - 0.06, b, back, h + 26))
+    # the pan, on its stalk
+    aa.line(s, (90, 92, 96), P(x, y + 0.14, h), P(x, y + 0.14, h + 7), 2)
+    poly(s, col, quad_z(a, back, b, y + 0.3, h + 10))
+    poly(s, shade(col, 0.7), quad_y(y + 0.3, a, b, h + 7, h + 10))
+    poly(s, shade(col, 0.6), quad_x(b, back, y + 0.3, h + 7, h + 10))
+
+
 def draw_stand(s, rng):
-    """The covered stand: back wall, four tiers of empty seats, the roof and the scoreboard."""
+    """The covered stand: back wall, three tiers of empty seats, the roof and the scoreboard."""
     # the back wall, in club green, with the club's name in white along it
     poly(s, STAND, quad_y(ST_BACK, ST_X0, ST_X1, 0, ROOF_Z1))
     for k in range(int(ST_X0 * 4), int(ST_X1 * 4)):
@@ -540,20 +558,17 @@ def draw_stand(s, rng):
         yb = yf - TIER_D
         h = 10 + TIER_H * k
         box(s, ST_X0, yb if k < TIERS - 1 else ST_BACK, ST_X1, yf, h, (176, 176, 170))
-        x = ST_X0 + 0.25
-        while x < ST_X1 - 0.2:
-            sy = yb + 0.28
+        x = ST_X0 + 0.35
+        while x < ST_X1 - 0.3:
+            if 6.55 < x < 7.45:                          # leave the steps clear
+                x += SEAT_PITCH
+                continue
             blk = int((x - ST_X0) / ((ST_X1 - ST_X0) / 4))      # four blocks along the stand
             col = palette[(blk + k) % 2]
             if k == 0 and blk in (1, 2):
                 col = (238, 238, 232)
-            gx, gy = P(x, sy, h)
-            gx, gy = round(gx), round(gy)
-            # seat back and pan (a little highlight on the lit, east side)
-            pygame.draw.rect(s, shade(col, 0.78), (gx - 5, gy - 12, 10, 10), border_radius=2)
-            pygame.draw.rect(s, shade(col, 0.95), (gx + 1, gy - 12, 4, 10), border_radius=2)
-            pygame.draw.rect(s, col, (gx - 5, gy - 3, 10, 4), border_radius=1)
-            x += 0.42
+            seat(s, x, yb + 0.3, h, col)
+            x += SEAT_PITCH
         # the riser's front edge: a painted line
         aa.line(s, (240, 240, 236), P(ST_X0, yf, h), P(ST_X1, yf, h), 1)
     # steps up the middle
@@ -607,20 +622,40 @@ def stadium_props(s):
         gx, gy = P(15.35, y, 20)
         aa.circle(s, shade(hedge, rng.uniform(0.9, 1.25)), (round(gx - 2), round(gy)), 4)
     floodlight(s, -1.5, N + 1.6)
-    # the stalls: veg, fruit, flowers, cheese and bread
+    # the stalls: veg, fruit, flowers and bread, 1.35x the old size (the cheese stall made way)
     f = _font(10)
     fc = _font(9)
-    Y0, Y1 = N + 2.0, N + 3.0
-    stalls = ((-2.6, (40, 140, 70), "veg", "VEG"), (-0.1, (220, 70, 60), "fruit", "FRUIT"),
-              (2.4, (230, 110, 170), "flowers", "FLOWERS"), (4.9, (240, 190, 40), "cheese", "CHEESE"),
-              (7.4, (60, 120, 200), "bread", "BREAD"))
+    stalls = ((-2.2, (40, 140, 70), "veg", "VEG"), (1.25, (220, 70, 60), "fruit", "FRUIT"),
+              (4.7, (230, 110, 170), "flowers", "FLOWERS"), (8.15, (60, 120, 200), "bread", "BREAD"))
     for x0, col, kind, label in stalls:
-        stall(s, x0, x0 + 2.1, Y0, Y1, col, kind, label, f, rng)
+        big_stall(s, x0, MK_Y1, col, kind, label, f, rng)
     # bunting along the fronts of the awnings
-    bunting(s, [(x, Y1 + 0.3, 50) for x in (-2.6, -0.1, 2.4, 4.9, 7.4, 9.5)], rng)
+    zf = 50 * MK_S
+    bunting(s, [(x, MK_Y1 + 0.3 * MK_S, zf) for x in [st[0] for st in stalls] + [stalls[-1][0] + 2.1 * MK_S]], rng,
+            sag=11)
     # chalkboards in the aisle (the market is quiet: no shoppers)
-    for x, words, seed in ((-0.35, "FRESH", 1), (4.65, "LOCAL", 2), (9.9, "TODAY", 3)):
-        chalkboard(s, x, Y1 + 0.75, words, fc, seed)
+    for x, words, seed in ((1.0, "FRESH", 1), (7.95, "LOCAL", 2), (11.3, "TODAY", 3)):
+        chalkboard(s, x, MK_Y1 + 0.8, words, fc, seed)
+
+
+MK_S = 1.35                      # the market stalls are drawn at this scale
+MK_Y1 = N + 3.3                  # the front of the counters (their backs are at MK_Y1 - 1.35)
+
+
+def big_stall(s, x0, y1, stripe, kind, label, font, rng):
+    """A stall scaled up by MK_S about its front-left foot at world (x0, y1).
+
+    It is drawn at the normal size on a clear layer and smooth-scaled; a uniform
+    scale of the picture is a uniform scale of the world, so it stays 2:1 isometric."""
+    lay = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+    lay.fill((*PAVING, 0))
+    ox, oy0, oy1 = 3.0, N + 2.0, N + 3.0         # a spot with room all round on the layer
+    stall(lay, ox, ox + 2.1, oy0, oy1, stripe, kind, label, font, rng)
+    r = lay.get_bounding_rect()
+    ax, ay = P(ox, oy1)
+    big = pygame.transform.smoothscale(lay.subsurface(r), (round(r.w * MK_S), round(r.h * MK_S)))
+    bx, by = P(x0, y1)
+    s.blit(big, (round(bx + (r.x - ax) * MK_S), round(by + (r.y - ay) * MK_S)))
 
 
 def build_stadium_front():

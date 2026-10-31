@@ -609,6 +609,7 @@ class App:
 
     def draw_world(self, s, runners, t, game=None):
         s.blit(self.bg, (0, 0))
+        scene.draw_clock_hands(s)          # the clock tower keeps the computer's time
         items = []
         for o in self.obstacles:
             items.append(("ob", o))
@@ -1179,6 +1180,12 @@ def selftest_basketball(matches=6):
         w = g.winner.name if g.winner else "draw"
         print(f"basketball {m + 1}: {g.p1.name} {g.p1.score} v Robot {g.p2.score}  {steps / 30:.0f}s  winner {w}  {g.stats}")
     assert tot["made"] > 0 and tot["threes"] > 0 and tot["steals"] > 0 and tot["blocks"] > 0, tot
+    # the street: ten minutes at 60 steps a second, and no two vehicles ever share screen space
+    import traffic
+    n, kinds, longest = traffic.check_no_clash(600.0, 1 / 60)
+    assert kinds == {"bus", "cab"} and n >= 30, (n, kinds)
+    assert longest < 16, f"the street was empty for {longest:.1f}s"
+    print(f"traffic ok: {n} vehicles in 10 minutes, never more than one in view, longest empty spell {longest:.1f}s")
     print("basketball selftest ok", tot)
 
 

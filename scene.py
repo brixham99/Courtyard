@@ -109,8 +109,21 @@ def bricks_y(s, y, x0, x1, z0, z1, col, rng):
         row += 1
 
 
-def clock_face(s, plane, a, b, z, r_tiles, r_z):
-    """A round clock on a wall (plane 'x' at x=a centred y=b, or 'y' at y=a centred x=b)."""
+CLOCKS = []          # the clock faces on the backdrop, whose hands draw_clock_hands keeps to time
+CLOCK_TIME = None    # None: the computer's own local time; or seconds since midnight (tests, videos)
+
+
+def _face_point(plane, a, b, z, r_tiles, r_z, theta, ln):
+    """A point on a clock face at clock angle theta (0 = twelve, clockwise), ln of the radius out.
+    A face on the x plane is seen from the +x side, so its right-hand side is towards -y;
+    a face on the y plane is seen from the +y side, its right-hand side towards +x."""
+    u, v = math.sin(theta) * r_tiles * ln, math.cos(theta) * r_z * ln
+    return P(a, b - u, z + v) if plane == "x" else P(b + u, a, z + v)
+
+
+def clock_face(s, plane, a, b, z, r_tiles, r_z, hands=True):
+    """A round clock on a wall (plane 'x' at x=a centred y=b, or 'y' at y=a centred x=b).
+    With hands=False the face is left bare and registered for draw_clock_hands."""
     pts = []
     for i in range(40):
         t = 2 * math.pi * i / 40
@@ -124,17 +137,53 @@ def clock_face(s, plane, a, b, z, r_tiles, r_z):
     k = 1 + 2.0 / max(rmin, 1)
     poly(s, (40, 36, 30), [(cx + (x - cx) * k, cy + (y - cy) * k) for x, y in pts])
     poly(s, (246, 242, 226), pts)
+    # hour marks: little bars at twelve, three, six and nine, dots for the rest
     for i in range(12):
-        t = 2 * math.pi * i / 12
-        u, v = math.cos(t) * r_tiles * 0.82, math.sin(t) * r_z * 0.82
-        p = P(a, b + u, z + v) if plane == "x" else P(b + u, a, z + v)
-        aa.circle(s, (40, 36, 30), (round(p[0]), round(p[1])), 1)
+        th = 2 * math.pi * i / 12
+        if i % 3 == 0:
+            aa.line(s, (40, 36, 30), _face_point(plane, a, b, z, r_tiles, r_z, th, 0.72),
+                    _face_point(plane, a, b, z, r_tiles, r_z, th, 0.9), 2)
+        else:
+            p = _face_point(plane, a, b, z, r_tiles, r_z, th, 0.82)
+            aa.circle(s, (40, 36, 30), (round(p[0]), round(p[1])), 1)
+    if hands:
+        # ten past ten, the classic shop-window time
+        _hands(s, (plane, a, b, z, r_tiles, r_z), 10 * 3600 + 10 * 60, seconds=False)
+    else:
+        CLOCKS.append((plane, a, b, z, r_tiles, r_z))
+
+
+def _hands(s, face, secs, seconds=True):
+    plane, a, b, z, r_tiles, r_z = face
     c = P(a, b, z) if plane == "x" else P(b, a, z)
-    # ten past ten, the classic shop-window time
-    for ang, ln in ((math.radians(-60), 0.5), (math.radians(150 - 180), 0.75)):
-        u, v = math.cos(ang) * r_tiles * ln, math.sin(ang) * r_z * ln
-        p = P(a, b + u, z + v) if plane == "x" else P(b + u, a, z + v)
-        aa.line(s, (30, 26, 22), c, p, 2)
+    hour = (secs / 3600.0) % 12
+    minute = (secs / 60.0) % 60
+    sec = int(secs) % 60                       # a ticking second hand, like the real thing
+    ink = (30, 26, 22)
+    pt = lambda th, ln: _face_point(plane, a, b, z, r_tiles, r_z, th, ln)
+    aa.line(s, ink, pt(hour / 12 * 2 * math.pi + math.pi, 0.12), pt(hour / 12 * 2 * math.pi, 0.5), 3)
+    aa.line(s, ink, pt(minute / 60 * 2 * math.pi + math.pi, 0.14), pt(minute / 60 * 2 * math.pi, 0.76), 2)
+    if seconds:
+        th = sec / 60 * 2 * math.pi
+        aa.line(s, (200, 36, 30), pt(th + math.pi, 0.22), pt(th, 0.8), 1)
+    aa.circle(s, (200, 36, 30) if seconds else ink, (round(c[0]), round(c[1])), 2)
+
+
+def clock_seconds():
+    """Seconds since midnight on the computer's clock (or CLOCK_TIME, if set)."""
+    if CLOCK_TIME is not None:
+        return CLOCK_TIME
+    import time
+    now = time.time()
+    lt = time.localtime(now)
+    return lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec + (now % 1)
+
+
+def draw_clock_hands(s):
+    """The live hands on the backdrop's clock faces: the computer's own local time."""
+    secs = clock_seconds()
+    for face in CLOCKS:
+        _hands(s, face, secs)
 
 
 def tree_surface(seed, r=58):
@@ -474,11 +523,11 @@ def village_school(s, fonts):
         poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, z, z + 6))
     poly(s, STONE, quad_x(tx1 + 0.01, ty0, ty1, th - 12, th))
     poly(s, shade(STONE, 0.75), quad_y(ty1 + 0.01, tx0, tx1, th - 12, th))
-    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 166, 0.6, 21)
-    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 166, 0.6, 21)
+    # the two clock faces keep real time: their hands are drawn live by draw_clock_hands
+    CLOCKS.clear()
+    clock_face(s, "x", tx1 + 0.02, (ty0 + ty1) / 2, 166, 0.6, 21, hands=False)
+    clock_face(s, "y", ty1 + 0.02, (tx0 + tx1) / 2, 166, 0.6, 21, hands=False)
     tm, tn = (ty0 + ty1) / 2, (tx0 + tx1) / 2
-    window_x(s, tx1 + 0.01, tm - 0.35, tm + 0.35, 106, 140)
-    window_y(s, ty1 + 0.01, tn - 0.35, tn + 0.35, 106, 140)
     # arched doorway on the front
     poly(s, shade(STONE, 0.8), quad_y(ty1 + 0.01, tn - 0.55, tn + 0.55, 0, 66))
     poly(s, (60, 40, 30), quad_y(ty1 + 0.02, tn - 0.42, tn + 0.42, 0, 58))

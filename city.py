@@ -316,10 +316,15 @@ def balcony_y(s, y, xa, xb, z, col=(60, 66, 80)):
     aa.line(s, col, P(xb, y, z + 24), P(xb, y + d, z + 24), 3)
 
 
-def wheelie_bin(s, x, y, col):
+def wheelie_bin(s, x, y, col, part="all"):
+    """A wheelie bin; part='shadow' or 'body' draws just that (for the far pavements,
+    whose bins stand in front of the passing traffic)."""
     w, d, H = 0.42, 0.5, 40
     sd = H * SHADOW_K / HW / 2
-    _shadow(s, [P(x + w, y), P(x + w - sd, y + sd), P(x - sd, y + d + sd), P(x, y + d)], 60)
+    if part != "body":
+        _shadow(s, [P(x + w, y), P(x + w - sd, y + sd), P(x - sd, y + d + sd), P(x, y + d)], 60)
+    if part == "shadow":
+        return
     box(s, x, y, x + w, y + d, H, col)
     box(s, x - 0.03, y - 0.03, x + w + 0.03, y + d + 0.03, 4, shade(col, 0.8), z0=H)
     for yy in (y + 0.1, y + d - 0.1):
@@ -410,15 +415,36 @@ def bus_shelter(s, x0, y0, x1, y1):
     aa.circle(s, FR, [round(v) for v in P(fx, fy, 154)], 3)
 
 
-def street_lamp(s, x, y, arm=(-1, 0)):
-    """A modern grey street lamp, its arm over the court."""
+FAR = N + 6.8      # the far kerbs of the two front roads
+
+
+def far_street(s, part):
+    """The bins and lamps on the far pavements, beyond the traffic."""
+    wheelie_bin(s, FAR + 0.6, 7.2, (60, 62, 66), part)
+    wheelie_bin(s, 7.6, FAR + 0.6, (60, 120, 70), part)
+    street_lamp(s, FAR + 0.5, 3.4, arm=(-1, 0), part=part)
+    street_lamp(s, 3.4, FAR + 0.5, arm=(0, -1), part=part)
+
+
+def build_city_street():
+    """The far pavements' bins and lamps, drawn over the passing traffic."""
+    s = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+    far_street(s, "body")
+    return s
+
+
+def street_lamp(s, x, y, arm=(-1, 0), part="all"):
+    """A modern grey street lamp, its arm over the court (part: 'all', 'shadow' or 'body')."""
     H = 220
     gx, gy = P(x, y)
     d = H * SHADOW_K / HW / 2
-    sh = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
-    w = 0.06
-    aa.polygon(sh, (20, 20, 26, 60), [P(x + w, y - w), P(x + w - d, y - w + d), P(x - w - d, y + w + d), P(x - w, y + w)])
-    s.blit(sh, (0, 0))
+    if part != "body":
+        sh = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        w = 0.06
+        aa.polygon(sh, (20, 20, 26, 60), [P(x + w, y - w), P(x + w - d, y - w + d), P(x - w - d, y + w + d), P(x - w, y + w)])
+        s.blit(sh, (0, 0))
+    if part == "shadow":
+        return
     G = (96, 102, 112)
     pygame.draw.rect(s, shade(G, 0.8), (gx - 5, gy - 14, 10, 14))
     aa.line(s, G, (gx, gy - 10), (gx, gy - H), 5)
@@ -491,11 +517,9 @@ def city(s, fonts):
     for (a, b) in ((FAR - 0.25, None), (FAR - 0.35, None)):
         aa.line(s, (236, 200, 50), P(a, -12), P(a, N + 1.6), 2)
         aa.line(s, (236, 200, 50), P(-12, a), P(N + 1.6, a), 2)
-    # a bin and a lamp or two over there
-    wheelie_bin(s, FAR + 0.6, 7.2, (60, 62, 66))
-    wheelie_bin(s, 7.6, FAR + 0.6, (60, 120, 70))
-    street_lamp(s, FAR + 0.5, 3.4, arm=(-1, 0))
-    street_lamp(s, 3.4, FAR + 0.5, arm=(0, -1))
+    # a bin and a lamp or two over there: just their shadows here, as the traffic
+    # passes behind them (build_city_street draws them, over the traffic)
+    far_street(s, "shadow")
     # kerbs and road markings on the front roads
     poly(s, (196, 196, 190), quad_y(N + 1.6, -5.0, N + 1.6, -4, 0))
     poly(s, (210, 210, 204), quad_x(N + 1.6, -5.0, N + 1.6, -4, 0))

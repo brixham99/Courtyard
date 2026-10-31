@@ -9,6 +9,7 @@ import aa
 
 import basketball as BB
 import poses
+import traffic
 from iso import WIN_W, WIN_H, N, P, shade, mix, poly, quad_x, quad_y, quad_z, box
 
 Z = BB.ZPX
@@ -224,6 +225,7 @@ class BasketballView:
         app = self.app
         sc = app.scene("city")
         s.blit(sc["bg"], (0, 0))
+        traffic.draw_shadows(s, app.t)
         hoops = g.hoops if g is not None else BB.make_hoops()
         if g is not None and not (g.holder is not None and g.holder.charging):
             self.draw_ball_shadow(s, g)
@@ -305,6 +307,12 @@ class BasketballView:
             elif k == "rimfront":
                 self.draw_rim(s, o, "front")
         s.blit(sc["front"], (0, 0))
+        # the odd black cab or red bus on the roads beyond, then the far pavements' lamps and bins
+        traffic.draw(s, app.t)
+        if "street" not in sc:
+            import city
+            sc["street"] = city.build_city_street()
+        s.blit(sc["street"], (0, 0))
         if g is not None and g.state != "match_over":
             self.draw_hoop_labels(s, g)
             if g.state == "play":
