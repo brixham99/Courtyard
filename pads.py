@@ -116,8 +116,9 @@ class Hints:
 
 
 class PadInput:
-    def __init__(self, connected=False, family=None, turn=0, move=0, down=(), up=(), held=()):
+    def __init__(self, connected=False, family=None, turn=0, move=0, down=(), up=(), held=(), forward=False):
         self.connected = connected
+        self.forward = forward    # right trigger pulled: forwards in play (A is the action)
         self.family = family
         self.turn = turn          # -1, 0, +1 like Left/Right
         self.move = move          # +1 forwards (up), -1 back
@@ -346,12 +347,17 @@ class Pads:
             iid = self.slots[slot]
             dev = self.devices.get(iid) if iid is not None else None
             if dev is None or not self._alive(dev):
-                turn, move, held = 0, 0, set()
+                turn, move, held, forward = 0, 0, set(), False
                 family = None
                 connected = False
             else:
                 turn, move = self._axes(dev)
                 held = self._actions(dev)
+                try:
+                    rt = norm_axis(dev.get_axis(pygame.CONTROLLER_AXIS_TRIGGERRIGHT))
+                except Exception:
+                    rt = 0.0
+                forward = rt >= DEADZONE
                 family = self.kind_of.get(iid) or family_of(self.names.get(iid, ""))
                 connected = True
                 if dev.get_button(pygame.CONTROLLER_BUTTON_BACK):
@@ -360,7 +366,7 @@ class Pads:
             down = held - prev
             up = prev - held
             self.prev_held[slot] = set(held)
-            out.append(PadInput(connected, family, turn, move, down, up, held))
+            out.append(PadInput(connected, family, turn, move, down, up, held, forward))
         self.players = out
         if any_back:
             self.back_t += dt

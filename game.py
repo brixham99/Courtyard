@@ -522,7 +522,10 @@ class App:
     def apply_pads(self, dt):
         inp = self.pads.player(0)
         old_turn, old_move = self.pad_turn, self.pad_move
-        self.pad_turn, self.pad_move = inp.turn, inp.move
+        move = inp.move
+        if not move and getattr(inp, "forward", False) and self.state == "play":
+            move = 1                       # right trigger: forwards, like Up
+        self.pad_turn, self.pad_move = inp.turn, move
         if self.paused:
             for name in inp.down:
                 self.on_pad_down(name)
@@ -531,8 +534,8 @@ class App:
             return
         if inp.turn != old_turn and inp.turn:
             self.on_direction("left" if inp.turn < 0 else "right")
-        if inp.move != old_move and inp.move:
-            self.on_direction("up" if inp.move > 0 else "down")
+        if move != old_move and move:
+            self.on_direction("up" if move > 0 else "down")
         self._repeat_menu(dt, inp)
         for name in inp.down:
             self.on_pad_down(name)
@@ -1817,6 +1820,16 @@ def selftest_input():
     xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, -0.8)     # stick up: run forwards
     assert app.frame(0.3, events=[])
     assert app.game.p1.x > x0 + 0.2
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, 0.0)
+    assert app.frame(0.3, events=[])
+    xr = app.game.p1.x
+    assert app.frame(0.3, events=[])
+    assert abs(app.game.p1.x - xr) < 0.05, "a resting right trigger must not run"
+    xbox.set_axis(pygame.CONTROLLER_AXIS_TRIGGERRIGHT, 1.0)  # right trigger: forwards too
+    assert app.frame(0.3, events=[])
+    assert app.game.p1.x > xr + 0.2, "right trigger runs forwards"
+    xbox.set_axis(pygame.CONTROLLER_AXIS_TRIGGERRIGHT, -1.0)
+    assert app.frame(1 / 60, events=[])
     x1 = app.game.p1.x
     xbox.set_button(pygame.CONTROLLER_BUTTON_START, True)
     assert app.frame(1 / 60, events=[])
