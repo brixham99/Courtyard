@@ -430,7 +430,7 @@ class BasketballView:
                               (235, 240, 250)))
             if sub:
                 lines.append((app.f_hud, sub, (235, 240, 250)))
-            lines.append((app.f_small, "Press Enter for the title screen", (190, 200, 220)))
+            lines.append((app.f_small, app.enter_title_line(), (190, 200, 220)))
             app.centre_card(s, lines)
 
     def draw_banner(self, s, g):
@@ -460,11 +460,12 @@ class BasketballView:
         elif g.holder is h:
             d = math.hypot(h.x - h.goal.cx, h.y - h.goal.cy)
             pts = 3 if d >= BB.ARC_R else 2
-            msg = f"Your ball: hold Space and let go in the green to shoot  ·  {pts} points from here"
+            act = app.pads.hints.action
+            msg = f"Your ball: hold {act} and let go in the green to shoot  ·  {pts} points from here"
             col = (200, 110, 30)
             meter = True
         elif g.holder is o:
-            msg = f"Defend! Space to swipe for a steal, or jump as {o.name} shoots"
+            msg = f"Defend! {app.pads.hints.action} to swipe for a steal, or jump as {o.name} shoots"
             col = (40, 120, 70)
         elif g.ball.shot_by is not None:
             msg = "Shot's up! Get ready for the rebound"
