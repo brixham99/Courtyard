@@ -450,7 +450,7 @@ class FootballView:
                               (235, 240, 250)))
             if sub:
                 lines.append((app.f_hud, sub, (235, 240, 250)))
-            lines.append((app.f_small, "Press Enter for the title screen", (190, 200, 220)))
+            lines.append((app.f_small, app.enter_title_line(), (190, 200, 220)))
             app.centre_card(s, lines)
 
     def draw_banner(self, s, g):
@@ -477,18 +477,24 @@ class FootballView:
                 msg = "Loose ball!"
             col = (40, 100, 190)
         elif g.holder is h:
-            msg = ("Left/Right to aim  ·  let go of Space in the green" if h.charging
-                   else "Your ball: hold Space and let go in the green to shoot")
+            act = app.pads.hints.action
+            if app.using_pad():
+                msg = (f"Stick to aim  ·  let go of {act} in the green" if h.charging
+                       else f"Your ball: hold {act} and let go in the green to shoot")
+            else:
+                msg = ("Left/Right to aim  ·  let go of Space in the green" if h.charging
+                       else "Your ball: hold Space and let go in the green to shoot")
             col = (200, 110, 30)
             meter = True
         elif g.ball.shot_by is h:
             msg = "Shot's away…"
             col = (200, 110, 30)
         elif g.ball.shot_by is o and abs(h.x - h.home.x) < 3.0:
-            msg = "Shot! Space to dive"
+            msg = f"Shot! {app.pads.hints.action} to dive" if app.using_pad() else "Shot! Space to dive"
             col = (170, 50, 60)
         elif g.holder is o:
-            msg = "Defend! Space to slide-tackle – or get back in goal"
+            msg = (f"Defend! {app.pads.hints.action} to slide-tackle – or get back in goal" if app.using_pad()
+                   else "Defend! Space to slide-tackle – or get back in goal")
             col = (40, 120, 70)
         else:
             msg = "Loose ball – get to it!"

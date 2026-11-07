@@ -28,6 +28,15 @@ Basketball:         run with the ball to dribble; hold Space and let go with the
 Football:           run into the ball to dribble; hold Space and let go with the meter
                     in the green to shoot (too much and it balloons over); without the
                     ball, Space slide-tackles, or dives when a shot is coming at your goal
+
+A gamepad (Xbox or PlayStation, SDL GameController) does the same jobs when it
+is plugged in: stick or D-pad to move, A/Cross to confirm and to do the main
+action, B/Circle to go back, Y/Triangle for the music, Start/Options to pause.
+Hold Back/Share for about a second to quit. Prompts switch to the pad's buttons
+while one is connected, and stay on the keyboard otherwise.
+
+Full-screen:  ZENSTATION=1, or --fullscreen. The picture is still drawn at
+1280×720 and scaled to the television, with bars if the screen is not 16:9.
 """
 import json
 import math
@@ -47,7 +56,9 @@ import football
 import football_view
 import batdown
 import batdown_view
+import pads as pads_mod
 import scene
+import screenmode
 import tag
 from iso import WIN_W, WIN_H, N, P, SHADOW_K, mix, shade
 
@@ -201,10 +212,12 @@ class Sound:
 
 # ------------------------------------------------------------------ the app
 class App:
-    def __init__(self, sound=True):
+    def __init__(self, sound=True, fullscreen=False, display_size=None):
         pygame.init()
         pygame.display.set_caption("Courtyard")
-        self.screen = pygame.display.set_mode((WIN_W, WIN_H))
+        self.display = screenmode.Display(fullscreen, display_size)
+        self.screen = self.display.canvas          # always the internal 1280×720 frame
+        self.fullscreen = bool(fullscreen)
         self.clock = pygame.time.Clock()
         self.f_logo = load_font(96, True)
         self.f_big = load_font(46, True)
@@ -237,6 +250,15 @@ class App:
         self.held_turn = []
         self.held_move = []
         self.step_phase = {}
+        self.pads = pads_mod.Pads()
+        self.paused = False
+        self.pad_turn = 0
+        self.pad_move = 0
+        self._leave = False
+        self._rep_axis = None
+        self._rep_t = 0.0
+        self._rep_count = 0
+        self.name_entry = None
 
     def scene(self, setting):
         """The static art for a setting (built once): background, front layer, obstacles."""
@@ -289,6 +311,11 @@ class App:
     def human_controls(self):
         turn = TURN_KEYS[self.held_turn[-1]] if self.held_turn else 0
         move = MOVE_KEYS[self.held_move[-1]] if self.held_move else 0
+        # A stick at rest must not cancel keys that are still held.
+        if self.pad_turn:
+            turn = self.pad_turn
+        if self.pad_move:
+            move = self.pad_move
         return turn, move
 
     def handle(self, e):
@@ -297,6 +324,14 @@ class App:
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_m:
                 self.sound.music(not self.sound.music_on)
+            if self.state == "name" and self.name_entry is not None:
+                return self.handle_name_key(e)
+            # Paused: Space/Enter resumes, Esc still leaves for the title. Other new
+            # presses wait, so a pause does not also shoot. Key-ups still fall through.
+            if self.paused and e.key != pygame.K_ESCAPE:
+                if e.key in GO_KEYS:
+                    self.paused = False
+                return True
             if self.state == "title":
                 if e.key == pygame.K_ESCAPE:
                     return False
@@ -314,6 +349,7 @@ class App:
                         self.sound.play("boing")
             elif self.state == "play":
                 if e.key == pygame.K_ESCAPE:
+                    self.paused = False
                     self.state = "title"
                     self.sound.set_track("title")
                     return True
@@ -347,13 +383,165 @@ class App:
                 self.held_move.remove(e.key)
         return True
 
+    def handle_name_key(self, e):
+        """Arrow keys edit a name the same way a pad does. Enter or Space accepts, Esc cancels."""
+        ne = self.name_entry
+        if e.type != pygame.KEYDOWN or ne is None:
+            return True
+        if e.key in (pygame.K_LEFT, pygame.K_a):
+            ne.move(-1)
+        elif e.key in (pygame.K_RIGHT, pygame.K_d):
+            ne.move(1)
+        elif e.key in (pygame.K_UP, pygame.K_w):
+            ne.cycle(1)
+        elif e.key in (pygame.K_DOWN, pygame.K_s):
+            ne.cycle(-1)
+        elif e.key in GO_KEYS:
+            ne.accept()
+        elif e.key == pygame.K_ESCAPE:
+            ne.back()
+        if ne.done or ne.cancelled:
+            self.state = "title"
+        return True
+
     def bd_held(self):
         h = set()
         if any(MOVE_KEYS[k] > 0 for k in self.held_move):
             h.add("up")
+        if self.pad_move > 0:
+            h.add("up")
         return h
 
+    def synth(self, key, down):
+        """Feed one key through the keyboard path, so a pad does what that key does."""
+        et = pygame.KEYDOWN if down else pygame.KEYUP
+        ok = self.handle(pygame.event.Event(et, key=key, mod=0, unicode="", scancode=0))
+        if ok is False:
+            self._leave = True
+        return ok
+
+    def on_direction(self, name):
+        if self.state == "name" and self.name_entry is not None:
+            ne = self.name_entry
+            if name in ("left", "right"):
+                ne.move(-1 if name == "left" else 1)
+            else:
+                ne.cycle(1 if name == "up" else -1)
+            if ne.done or ne.cancelled:
+                self.state = "title"
+            return
+        if self.state == "title":
+            if name in ("left", "right"):
+                self.sel_char = (self.sel_char + (-1 if name == "left" else 1)) % len(PLAYABLE)
+                self.sound.play("beep")
+            else:
+                self.sel_game = (self.sel_game + (-1 if name == "up" else 1)) % len(GAMES)
+                self.sound.play("beep")
+        elif self.state == "play" and self.is_bd:
+            self.game.press(name, self.bd_held())
+
+    def on_pad_down(self, name):
+        if self.state == "name" and self.name_entry is not None:
+            ne = self.name_entry
+            if name == "a" or name == "start":
+                ne.accept()
+            elif name == "b":
+                ne.back()
+            elif name == "y":
+                self.synth(pygame.K_m, True)
+            if ne.done or ne.cancelled:
+                self.state = "title"
+            return
+        if self.paused:
+            if name in ("a", "start"):
+                self.paused = False
+            elif name == "b":
+                self.synth(pygame.K_ESCAPE, True)
+            elif name == "y":
+                self.synth(pygame.K_m, True)
+            return
+        if name == "a":
+            self.synth(pygame.K_SPACE, True)
+        elif name == "b":
+            self.synth(pygame.K_ESCAPE, True)
+        elif name == "y":
+            self.synth(pygame.K_m, True)
+        elif name == "start":
+            self.on_start()
+        elif name == "x":
+            self.on_x()
+
+    def on_pad_up(self, name):
+        if name == "a" and self.state == "play":
+            self.synth(pygame.K_SPACE, False)
+
+    def on_start(self):
+        """Start confirms on the title and the win screen, and pauses a game that is under way."""
+        if self.state == "title":
+            self.synth(pygame.K_RETURN, True)
+            return
+        if self.state == "play" and self.game is not None and self.game.state == "match_over":
+            self.synth(pygame.K_RETURN, True)
+            return
+        if self.state == "play":
+            self.paused = not self.paused
+
+    def on_x(self):
+        """Square / X lofts the bat in Batdown. Everywhere else it has no job."""
+        if self.state != "play" or not self.is_bd or self.game is None or self.paused:
+            return
+        g = self.game
+        if g.p1 is g.batter and not g.p1.ai:
+            g.press("space", {"up"})
+
+    def _repeat_menu(self, dt, inp):
+        """Hold the stick on the title (or a name) and it keeps stepping. Keys do not repeat."""
+        if self.state not in ("title", "name"):
+            self._rep_axis = None
+            self._rep_t = 0.0
+            self._rep_count = 0
+            return
+        axis = ("h", inp.turn) if inp.turn else (("v", inp.move) if inp.move else None)
+        if axis != self._rep_axis:
+            self._rep_axis = axis
+            self._rep_t = 0.0
+            self._rep_count = 0
+            return
+        if axis is None:
+            return
+        self._rep_t += dt
+        gap = 0.42 if self._rep_count == 0 else 0.17
+        if self._rep_t >= gap:
+            self._rep_t = 0.0
+            self._rep_count += 1
+            if axis[0] == "h":
+                self.on_direction("left" if axis[1] < 0 else "right")
+            else:
+                self.on_direction("up" if axis[1] > 0 else "down")
+
+    def apply_pads(self, dt):
+        inp = self.pads.player(0)
+        old_turn, old_move = self.pad_turn, self.pad_move
+        self.pad_turn, self.pad_move = inp.turn, inp.move
+        if self.paused:
+            for name in inp.down:
+                self.on_pad_down(name)
+            for name in inp.up:
+                self.on_pad_up(name)
+            return
+        if inp.turn != old_turn and inp.turn:
+            self.on_direction("left" if inp.turn < 0 else "right")
+        if inp.move != old_move and inp.move:
+            self.on_direction("up" if inp.move > 0 else "down")
+        self._repeat_menu(dt, inp)
+        for name in inp.down:
+            self.on_pad_down(name)
+        for name in inp.up:
+            self.on_pad_up(name)
+
     def update(self, dt, auto=False):
+        if self.paused:
+            return
         self.t += dt
         self.sound.t = self.t
         if self.state != "play":
@@ -816,7 +1004,7 @@ class App:
             lines = [(self.f_big, f"Round {g.round} to {w.name}!", (255, 230, 120))]
             for i, r in enumerate(g.runners):
                 lines.append((self.f_hud, f"{r.name} was it for {fmt_it(res['it'][i])}  ·  {res['tags'][i]} tag{'s' if res['tags'][i] != 1 else ''}", (235, 240, 250)))
-            lines.append((self.f_small, f"Press Space for round {g.round + 1}", (190, 200, 220)))
+            lines.append((self.f_small, self.next_round_line(g.round + 1), (190, 200, 220)))
             self.centre_card(s, lines)
         elif g.state == "match_over":
             wi = 0 if g.wins[0] > g.wins[1] else 1
@@ -837,8 +1025,21 @@ class App:
                 lines.append((self.f_hud, f"{r.name}: it for {fmt_it(res['it'][i])} in the last round", (235, 240, 250)))
             if sub:
                 lines.append((self.f_hud, sub, (235, 240, 250)))
-            lines.append((self.f_small, "Press Enter for the title screen", (190, 200, 220)))
+            lines.append((self.f_small, self.enter_title_line(), (190, 200, 220)))
             self.centre_card(s, lines)
+
+    def using_pad(self):
+        return self.pads.connected
+
+    def enter_title_line(self):
+        if self.using_pad():
+            return f"Press {self.pads.hints.action} for the title screen"
+        return "Press Enter for the title screen"
+
+    def next_round_line(self, n):
+        if self.using_pad():
+            return f"Press {self.pads.hints.action} for round {n}"
+        return f"Press Space for round {n}"
 
     def centre_card(self, s, lines):
         ims = [f.render(t, True, c) for f, t, c in lines]
@@ -977,26 +1178,7 @@ class App:
         rr = pygame.Rect(0, 0, 940, 120)
         rr.midtop = (x, pr.bottom + 14)
         self.panel(s, rr, (16, 20, 36), 200)
-        if self.title_is_bb():
-            lines = ["Basketball: one on one, a hoop at each end. Dribble as you run; steal it or block the shot to win it back.",
-                     "Hold Space and let go with the meter in the green to shoot. 2 points a basket, 3 from beyond the arc. First to 21.",
-                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  Space shoot / swipe / jump  ·  M music  ·  Esc back",
-                     "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"]
-        elif self.title_is_fb():
-            lines = ["Football: one on one, a goal at each end. Run into the ball to dribble; slide in to tackle. Who concedes kicks off.",
-                     "Hold Space and let go with the meter in the green to shoot – too hard and it flies over. Dive to save. First to 5.",
-                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  Space shoot / tackle / dive  ·  M music  ·  Esc back",
-                     "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"]
-        elif self.title_is_bd():
-            lines = ["Batdown: the fielder throws at the bat, the batter hits it away. Bat knocked down or caught on the full: swap!",
-                     "Throw from the chalk X where the ball first lands. Rings score 1, 2, 3; the hedge or railings on the full 5. First to 30.",
-                     "Bat: Space swing (+Up loft), Left/Right aim  ·  Field: run to the X, Left/Right aim, Up/Down throw, hold Space",
-                     "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"]
-        else:
-            lines = ["Tag: if you're it, touch the other player to tag them. They count to 3 before chasing – no tag-backs!",
-                     "Three rounds of a minute. Whoever is it for less time wins the round. Best of three wins the match.",
-                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  M music on/off  ·  Esc back",
-                     "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"]
+        lines = self.title_lines()
         # one size for the three rules lines: the largest that keeps them all inside the panel with padding
         room = rr.w - 2 * 24
         f = self.f_small
@@ -1004,8 +1186,54 @@ class App:
             f = self.rules_font(size)
             if all(f.size(l)[0] <= room for l in lines[:3]):
                 break
+        nav_font = self.f_small_b
+        if nav_font.size(lines[3])[0] > room:
+            nav_font = f
         for i, l in enumerate(lines):
-            self.text(s, self.f_small_b if i == 3 else f, l, (255, 230, 120) if i == 3 else (225, 230, 240), (x, rr.y + 12 + i * 25), "midtop", False)
+            self.text(s, nav_font if i == 3 else f, l, (255, 230, 120) if i == 3 else (225, 230, 240), (x, rr.y + 12 + i * 25), "midtop", False)
+        if self.using_pad():
+            self.text(s, self.f_tiny, f"Hold {self.pads.hints.quit} to quit", (170, 176, 190),
+                      (WIN_W - 16, WIN_H - 8), "bottomright", False)
+
+    def title_lines(self):
+        """The four lines under the title. With no pad these are the keyboard lines, unchanged."""
+        h = self.pads.hints
+        if self.title_is_bb():
+            rules = ["Basketball: one on one, a hoop at each end. Dribble as you run; steal it or block the shot to win it back.",
+                     "Hold Space and let go with the meter in the green to shoot. 2 points a basket, 3 from beyond the arc. First to 21.",
+                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  Space shoot / swipe / jump  ·  M music  ·  Esc back"]
+            if h.pad:
+                rules[1] = f"Hold {h.action} and let go with the meter in the green to shoot. 2 points a basket, 3 from beyond the arc. First to 21."
+                rules[2] = (f"Stick or D-pad: turn and run  ·  {h.action} shoot, swipe or jump  ·  "
+                            f"{h.music} music  ·  {h.back} back  ·  {h.pause} pause")
+        elif self.title_is_fb():
+            rules = ["Football: one on one, a goal at each end. Run into the ball to dribble; slide in to tackle. Who concedes kicks off.",
+                     "Hold Space and let go with the meter in the green to shoot – too hard and it flies over. Dive to save. First to 5.",
+                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  Space shoot / tackle / dive  ·  M music  ·  Esc back"]
+            if h.pad:
+                rules[1] = (f"Hold {h.action} and let go with the meter in the green to shoot – too hard and it flies over. "
+                            f"Dive to save. First to 5.")
+                rules[2] = (f"Stick or D-pad: turn and run  ·  {h.action} shoot, tackle or dive  ·  "
+                            f"{h.music} music  ·  {h.back} back  ·  {h.pause} pause")
+        elif self.title_is_bd():
+            rules = ["Batdown: the fielder throws at the bat, the batter hits it away. Bat knocked down or caught on the full: swap!",
+                     "Throw from the chalk X where the ball first lands. Rings score 1, 2, 3; the hedge or railings on the full 5. First to 30.",
+                     "Bat: Space swing (+Up loft), Left/Right aim  ·  Field: run to the X, Left/Right aim, Up/Down throw, hold Space"]
+            if h.pad:
+                rules[2] = (f"Bat: {h.action} swing (hold up or {h.extra} to loft), stick aims  ·  "
+                            f"Field: run to the X, stick aims, up/down throw, hold {h.action}")
+        else:
+            rules = ["Tag: if you're it, touch the other player to tag them. They count to 3 before chasing – no tag-backs!",
+                     "Three rounds of a minute. Whoever is it for less time wins the round. Best of three wins the match.",
+                     "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  M music on/off  ·  Esc back"]
+            if h.pad:
+                rules[2] = (f"Stick or D-pad: turn and run  ·  {h.music} music on/off  ·  "
+                            f"{h.back} back  ·  {h.pause} pause")
+        if h.pad:
+            nav = f"Left and right choose a player  ·  up and down choose a game  ·  {h.action} to play"
+        else:
+            nav = "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"
+        return rules + [nav]
 
     def rules_font(self, size):
         if not hasattr(self, "_rules_fonts"):
@@ -1055,8 +1283,40 @@ class App:
             pts = [(x + ca * dx - sa * dy, y + sa * dx + ca * dy) for dx, dy in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))]
             aa.polygon(s, shade(col, 0.75 + 0.25 * abs(math.cos(spin * tt))), pts)
 
+    def draw_pause(self, s):
+        dim = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        dim.fill((8, 10, 20, 150))
+        s.blit(dim, (0, 0))
+        h = self.pads.hints
+        if h.pad:
+            sub = f"{h.action} resume  ·  {h.back} title screen  ·  hold {h.quit} to quit"
+        else:
+            sub = "Space resume  ·  Esc title screen"
+        self.centre_card(s, [(self.f_big, "Paused", (255, 230, 120)),
+                             (self.f_hud, sub, (225, 230, 240))])
+
+    def draw_name(self, s):
+        s.fill((16, 20, 36))
+        ne = self.name_entry
+        h = self.pads.hints
+        shown = []
+        for i, ch in enumerate(ne.slots):
+            shown.append(ch if ch != " " else "·")
+        word = " ".join(shown)
+        if h.pad:
+            hint = f"Up and down change the letter  ·  left and right move  ·  {h.action} accepts  ·  {h.back} cancels"
+        else:
+            hint = "Up and down change the letter  ·  left and right move  ·  Enter accepts  ·  Esc cancels"
+        self.centre_card(s, [(self.f_hud, "Your name", (255, 230, 120)),
+                             (self.f_big, word, (255, 255, 255)),
+                             (self.f_small, hint, (210, 216, 230)),
+                             (self.f_tiny, f"letter {ne.i + 1} of {ne.length}", (190, 200, 220))])
+
     def draw(self):
         s = self.screen
+        if self.state == "name" and self.name_entry is not None:
+            self.draw_name(s)
+            return
         if self.state == "title":
             self.draw_title(s, self.t)
         elif self.is_bd:
@@ -1075,20 +1335,38 @@ class App:
             self.draw_world(s, self.game.runners, self.t, self.game)
             self.draw_confetti(s)
             self.draw_hud(s, self.game)
+        if self.paused:
+            self.draw_pause(s)
 
     # -------------------------------------------------------------- main loop
+    def frame(self, dt, events=None):
+        """One frame. Returns False when the game should close (exit code 0)."""
+        self._leave = False
+        if events is None:
+            events = pygame.event.get()
+        self.pads.poll(dt)
+        if self.pads.quit_requested:
+            return False
+        for e in events:
+            if not self.handle(e):
+                return False
+        self.apply_pads(dt)
+        if self._leave:
+            return False
+        self.update(dt)
+        self.draw()
+        self.display.present()
+        return True
+
     def run(self):
         self.sound.music(True)
         running = True
-        while running:
-            dt = min(0.05, self.clock.tick(FPS) / 1000)
-            for e in pygame.event.get():
-                if not self.handle(e):
-                    running = False
-            self.update(dt)
-            self.draw()
-            pygame.display.flip()
-        pygame.quit()
+        try:
+            while running:
+                dt = min(0.05, self.clock.tick(FPS) / 1000.0)
+                running = self.frame(dt)
+        finally:
+            pygame.quit()
 
 
 # ------------------------------------------------------------------ headless helpers
@@ -1418,12 +1696,366 @@ def record_football(out, seconds=28, fps=30, seed=None):
     print("wrote", out, "stats", g.stats, "score", g.p1.score, g.p2.score)
 
 
+def _key(key):
+    return pygame.event.Event(pygame.KEYDOWN, key=key, mod=0, unicode="", scancode=0)
+
+
+def selftest_input():
+    """Pads, pause, name entry and full-screen scaling, with no real display or pad.
+
+    SDL_VIDEODRIVER=dummy and SDL_AUDIODRIVER=dummy. Display sizes 1920×1080 and
+    3840×2160 are opened explicitly (the dummy driver only pretends to be 1024×768).
+    """
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    art = os.environ.get("COURTYARD_ARTIFACTS", "/opt/cursor/artifacts")
+    os.makedirs(art, exist_ok=True)
+
+    # geometry of the scale, independent of a window
+    assert pads_mod.family_of("Xbox 360 Controller") == "xbox"
+    assert pads_mod.family_of("Xbox Wireless Controller") == "xbox"
+    assert pads_mod.family_of("Sony DualShock 4") == "playstation"
+    assert pads_mod.family_of("PS4 Controller") == "playstation"
+    assert pads_mod.family_of("Wireless Controller") == "playstation"
+    assert pads_mod.family_of("DualSense") == "playstation"
+    assert screenmode.fit_rect(1280, 720, 1920, 1080) == (0, 0, 1920, 1080)
+    assert screenmode.fit_rect(1280, 720, 3840, 2160) == (0, 0, 3840, 2160)
+    assert screenmode.scaler_name((1280, 720), (3840, 2160)) == "nearest"
+    assert screenmode.scaler_name((1280, 720), (1920, 1080)) == "smooth"
+    x, y, w, h = screenmode.fit_rect(1280, 720, 1920, 1200)
+    assert y > 0 and w == 1920 and h == 1080          # letterbox on a taller screen
+    x, y, w, h = screenmode.fit_rect(1280, 720, 2560, 1080)
+    assert x > 0 and h == 1080 and w == 1920          # pillarbox on a wider screen
+    assert abs((w / h) - (1280 / 720)) < 0.01
+
+    # --- keyboard, with no pad, stays on the old words and the old keys
+    app = App(sound=False)
+    assert app.screen.get_size() == (WIN_W, WIN_H)
+    assert not app.fullscreen
+    assert pygame.mouse.get_visible()
+    assert not app.pads.connected
+    lines = app.title_lines()
+    assert lines[3] == "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"
+    assert lines[2] == "Controls: Left/Right turn  ·  Up run  ·  Down step back  ·  M music on/off  ·  Esc back"
+    assert "Space" not in lines[2]
+    app.sel_game = [n for n, _ in GAMES].index("Basketball")
+    assert "Hold Space and let go" in app.title_lines()[1]
+    assert "Space shoot / swipe / jump" in app.title_lines()[2]
+    app.sel_game = 0
+    assert app.handle(_key(pygame.K_RIGHT))
+    assert app.sel_char == 1
+    assert app.handle(_key(pygame.K_UP))
+    assert app.sel_game == len(GAMES) - 1
+    assert app.handle(_key(pygame.K_ESCAPE)) is False
+
+    # a fresh app for the pad, so the quit above is not this one's
+    app = App(sound=False)
+    assert app.handle(_key(pygame.K_RIGHT))
+    assert app.sel_char == 1
+
+    xbox = app.pads.attach_virtual("xbox")
+    app.pads.poll(0.016)
+    assert app.pads.connected
+    assert app.pads.hints.family == "xbox"
+    assert app.pads.hints.action == "A"
+    assert app.pads.hints.back == "B"
+    assert app.pads.hints.pause == "Start"
+    assert app.pads.hints.quit == "Back"
+    assert "Stick or D-pad" in app.title_lines()[2]
+    assert "A to play" in app.title_lines()[3]
+    assert "Enter or Space to play" not in app.title_lines()[3]
+
+    # deadzone: 0.2 does nothing, 0.35 is a direction
+    app.sel_char = 0
+    app.sel_game = 0
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 0.2)
+    assert app.frame(1 / 60, events=[])
+    assert app.sel_char == 0
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 0.0)
+    assert app.frame(1 / 60, events=[])
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 0.35)
+    assert app.frame(1 / 60, events=[])
+    assert app.sel_char == 1
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 0.0)
+    assert app.frame(1 / 60, events=[])
+
+    # D-pad down changes the game. Keyboard still works while the stick is centred.
+    before = app.sel_game
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_DOWN, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.sel_game == (before + 1) % len(GAMES)
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_DOWN, False)
+    assert app.frame(1 / 60, events=[])
+    held = app.sel_char
+    assert app.handle(_key(pygame.K_LEFT))
+    assert app.sel_char == (held - 1) % len(PLAYABLE)
+
+    # holding the D-pad repeats
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_DOWN, True)
+    seen = {app.sel_game}
+    for _ in range(40):
+        assert app.frame(1 / 60, events=[])
+        seen.add(app.sel_game)
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_DOWN, False)
+    assert app.frame(1 / 60, events=[])
+    assert len(seen) >= 3
+
+    app.sel_game = 0
+    app.t = 0.8
+    app.draw()
+    pygame.image.save(app.screen, os.path.join(art, "title-pad-xbox.png"))
+
+    # A starts Tag. Stick-up runs. Start pauses and freezes. A resumes. B returns.
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.state == "play" and isinstance(app.game, tag.TagGame)
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+    app.game.state = "playing"
+    app.game.p1.frozen = 0.0
+    x0 = app.game.p1.x
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, -0.8)     # stick up: run forwards
+    assert app.frame(0.3, events=[])
+    assert app.game.p1.x > x0 + 0.2
+    x1 = app.game.p1.x
+    xbox.set_button(pygame.CONTROLLER_BUTTON_START, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.paused
+    xbox.set_button(pygame.CONTROLLER_BUTTON_START, False)
+    for _ in range(5):
+        assert app.frame(0.1, events=[])
+    assert app.paused and abs(app.game.p1.x - x1) < 1e-6
+    app.draw()
+    pygame.image.save(app.screen, os.path.join(art, "pause-pad-xbox.png"))
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert not app.paused
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, 0.0)
+    assert app.frame(1 / 60, events=[])
+    xbox.set_button(pygame.CONTROLLER_BUTTON_B, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.state == "title" and not app.paused
+    xbox.set_button(pygame.CONTROLLER_BUTTON_B, False)
+    assert app.frame(1 / 60, events=[])
+
+    # win screen and the next-round card accept A
+    app.sel_game = 0
+    app.start_game()
+    app.game.state = "round_over"
+    app.game.state_t = 0.0
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.state == "play" and app.game.state != "round_over"
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+    app.game.state = "match_over"
+    app.game.state_t = 0.0
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.state == "title"
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+
+    # Y is the music button
+    assert app.sound.music_on
+    xbox.set_button(pygame.CONTROLLER_BUTTON_Y, True)
+    assert app.frame(1 / 60, events=[])
+    assert not app.sound.music_on
+    xbox.set_button(pygame.CONTROLLER_BUTTON_Y, False)
+    assert app.frame(1 / 60, events=[])
+
+    # basketball: A charges a shot and letting go releases it. Same path as football.
+    app.sel_game = [n for n, _ in GAMES].index("Basketball")
+    app.start_game(seed=1)
+    g = app.game
+    g.state = "play"
+    g.give(g.p1)
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert g.p1.charging
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+    assert not g.p1.charging
+
+    # batdown: X lofts the swing, and the stick still aims
+    app.sel_game = [n for n, _ in GAMES].index("Batdown")
+    app.start_game(seed=1)
+    g = app.game
+    g.state = "play"
+    g.batter, g.fielder = g.p1, g.p2
+    g.phase = "flight"
+    xbox.set_button(pygame.CONTROLLER_BUTTON_X, True)
+    assert app.frame(1 / 60, events=[])
+    assert g.loft and g.swing_t is not None
+    xbox.set_button(pygame.CONTROLLER_BUTTON_X, False)
+    assert app.frame(1 / 60, events=[])
+
+    # football uses the same A-as-Space path
+    app.sel_game = [n for n, _ in GAMES].index("Football")
+    app.start_game(seed=1)
+    g = app.game
+    g.state = "play"
+    g.holder = g.p1
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert g.p1.charging
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+
+    # name entry: up/down cycle, left/right move, A accepts
+    ne = pads_mod.NameEntry(length=4)
+    ne.cycle(1)
+    assert ne.slots[0] == "B"
+    ne.move(1)
+    ne.cycle(-1)          # slot 1 starts as a space; down wraps to Z
+    assert ne.slots[1] == "Z"
+    app.state = "name"
+    app.name_entry = pads_mod.NameEntry(length=4)
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, -1.0)
+    assert app.frame(1 / 60, events=[])
+    assert app.name_entry.slots[0] == "B"
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTY, 0.0)
+    assert app.frame(1 / 60, events=[])
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_RIGHT, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.name_entry.i == 1
+    xbox.set_button(pygame.CONTROLLER_BUTTON_DPAD_RIGHT, False)
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, True)
+    assert app.frame(1 / 60, events=[])
+    assert app.name_entry.done and app.state == "title"
+    assert app.name_entry.text.startswith("B")
+    xbox.set_button(pygame.CONTROLLER_BUTTON_A, False)
+    assert app.frame(1 / 60, events=[])
+    app.draw()
+
+    # second pad is player 2 and does not drive player 1
+    ps = app.pads.attach_virtual("playstation")
+    app.pads.poll(0.016)
+    assert app.pads.player(0).connected and app.pads.player(1).connected
+    assert app.pads.player(0).family == "xbox"
+    assert app.pads.player(1).family == "playstation"
+    ps.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 1.0)
+    app.pads.poll(0.016)
+    assert app.pads.player(1).turn == 1
+    assert app.pads.player(0).turn == 0
+    ps.set_axis(pygame.CONTROLLER_AXIS_LEFTX, 0.0)
+
+    # hot-plug: unplugging the first pad stops its direction and the hints follow whoever is left
+    xbox.set_axis(pygame.CONTROLLER_AXIS_LEFTX, -1.0)
+    app.pads.poll(0.016)
+    assert app.pads.player(0).turn == -1
+    app.pads.detach_virtual(xbox)
+    app.pads.poll(0.016)
+    assert app.pads.player(0).family == "playstation"
+    assert app.pads.player(0).turn == 0
+    assert app.pads.hints.action == "Cross"
+    app.sel_game = 0
+    app.state = "title"
+    app.t = 0.4
+    app.draw()
+    pygame.image.save(app.screen, os.path.join(art, "title-pad-playstation.png"))
+    assert "Cross" in " ".join(app.title_lines())
+    app.pads.detach_virtual(ps)
+    app.pads.poll(0.016)
+    assert not app.pads.connected
+    assert app.title_lines()[3] == "Left/Right choose a player  ·  Up/Down choose a game  ·  Enter or Space to play"
+
+    # holding Back for about a second quits; a shorter hold does not
+    xbox = app.pads.attach_virtual("xbox")
+    xbox.set_button(pygame.CONTROLLER_BUTTON_BACK, True)
+    quit_at = None
+    for i in range(8):
+        alive = app.frame(0.25, events=[])
+        if not alive:
+            quit_at = (i + 1) * 0.25
+            break
+    assert quit_at is not None and abs(quit_at - 1.0) < 0.05
+    xbox.set_button(pygame.CONTROLLER_BUTTON_BACK, False)
+    app.pads.detach_virtual()
+
+    # full-screen at 1080p and 4K: native pixels, aspect kept, cursor hidden, no border flag
+    def check_display(size, scaler):
+        disp = App(sound=False, fullscreen=True, display_size=size)
+        assert disp.screen.get_size() == (WIN_W, WIN_H)
+        assert disp.display.size == size
+        assert disp.display.fit == screenmode.fit_rect(WIN_W, WIN_H, *size)
+        assert disp.display.scaler == scaler
+        assert disp.display.flags & pygame.NOFRAME
+        assert not pygame.mouse.get_visible()
+        disp.t = 0.6
+        disp.draw()
+        dt = disp.display.present()
+        print(f"present {size[0]}x{size[1]} {disp.display.scaler} {dt * 1000:.2f} ms")
+        assert dt < 0.025
+        return disp
+
+    d1080 = check_display((1920, 1080), "smooth")
+    # the television is filled: the corner is the picture, not a black bar
+    show = d1080.pads.attach_virtual("xbox")
+    d1080.pads.poll(1 / 60)
+    d1080.t = 0.6
+    d1080.draw()
+    d1080.display.present()
+    assert d1080.display.out.get_at((4, 4))[:3] != (0, 0, 0)
+    assert d1080.display.out.get_at((1910, 1070))[:3] != (0, 0, 0)
+    assert "A to play" in d1080.title_lines()[3]
+    pygame.image.save(d1080.display.out, os.path.join(art, "title-fullscreen-1080.png"))
+    d1080.pads.detach_virtual(show)
+
+    d4k = check_display((3840, 2160), "nearest")
+    assert d4k.display.out.get_at((6, 6))[:3] != (0, 0, 0)
+    assert d4k.display.fit == (0, 0, 3840, 2160)
+
+    # a screen that is not 16:9 is letterboxed
+    tall = App(sound=False, fullscreen=True, display_size=(1920, 1200))
+    assert tall.display.fit[1] > 0
+    tall.draw()
+    tall.display.present()
+    assert tall.display.out.get_at((960, 2))[:3] == (0, 0, 0)
+    assert tall.display.out.get_at((960, 600))[:3] != (0, 0, 0)
+
+    # Zen Station path: no pinned size, so the dummy desktop (1024×768) is used, full-screen flag set
+    desk = App(sound=False, fullscreen=True)
+    assert desk.display.flags & pygame.FULLSCREEN
+    assert desk.display.flags & pygame.NOFRAME
+    assert desk.display.size == tuple(screenmode.desktop_size())
+    assert desk.screen.get_size() == (WIN_W, WIN_H)
+    fx, fy, fw, fh = desk.display.fit
+    assert abs((fw / fh) - (WIN_W / WIN_H)) < 0.02
+    assert not pygame.mouse.get_visible()
+    print("selftest input ok", "desktop", desk.display.size, "fit", desk.display.fit)
+    print("screenshots in", art)
+
+
+def want_fullscreen(argv=None):
+    argv = sys.argv if argv is None else argv
+    if "--fullscreen" in argv:
+        return True
+    return os.environ.get("ZENSTATION", "").strip() == "1"
+
+
+def display_size_arg():
+    """COURTYARD_DISPLAY=1920x1080 pins the full-screen framebuffer (used by the headless check)."""
+    raw = os.environ.get("COURTYARD_DISPLAY", "").strip().lower()
+    if "x" not in raw:
+        return None
+    w, h = raw.split("x", 1)
+    try:
+        return (int(w), int(h))
+    except ValueError:
+        return None
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
+        selftest_input()
         selftest()
         selftest_batdown()
         selftest_basketball()
         selftest_football()
+    elif "--selftest-input" in sys.argv:
+        selftest_input()
     elif "--selftest-football" in sys.argv:
         selftest_football()
     elif "--record-football" in sys.argv:
@@ -1457,4 +2089,5 @@ if __name__ == "__main__":
         import shots
         shots.main(sys.argv[sys.argv.index("--shots") + 1])
     else:
-        App().run()
+        fs = want_fullscreen()
+        App(fullscreen=fs, display_size=display_size_arg() if fs else None).run()

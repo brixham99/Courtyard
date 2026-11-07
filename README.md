@@ -36,6 +36,28 @@ Needs Python 3.9+ (pygame-ce, numpy, Pillow).
 | Esc | back to the title / quit |
 | Enter / Space | start, next round |
 
+Keyboard play is unchanged when a pad is connected: the keys above do exactly what they always did.
+
+## Gamepad
+An Xbox pad (wired) or a PlayStation pad (wired or Bluetooth) uses SDL's GameController layout, so the two match. The left stick and the D-pad both move, with a deadzone of about 0.3. Prompts on screen switch to the pad's own button names while one is plugged in (British names: Cross, Circle, Square, Triangle, Options, Share) and go back to the keyboard when it is not. A second pad is player 2; these games are against the robot, so it is tracked and not applied.
+
+| Xbox | PlayStation | Action |
+| --- | --- | --- |
+| Left stick / D-pad | Left stick / D-pad | same as the arrow keys |
+| A | Cross | main action, and confirm (start, next round, win screen) |
+| B | Circle | back (title, or quit from the title) |
+| X | Square | lofted swing in Batdown |
+| Y | Triangle | music on/off |
+| Start (Menu on newer Xbox pads) | Options | pause; on the title and the win screen, confirm |
+| Back, hold about a second (View on newer Xbox pads) | Share, hold about a second | quit to the launcher, exit code 0 |
+
+Name entry, when a screen asks for one: up and down cycle the letter, left and right move, A / Cross accepts, B / Circle cancels.
+
+## Full screen
+`ZENSTATION=1 python3 game.py`, or `python3 game.py --fullscreen`, fills the television at its native resolution. The game is still drawn at 1280×720 and scaled to fit, with black bars if the screen is not 16:9. There is no window border and the mouse pointer is hidden. A 1080p screen is 1.5× (smooth), a 4K screen is exactly 3× (nearest, so it stays sharp and cheap). Without the variable or the flag, the window is 1280×720 as before.
+
+`COURTYARD_DISPLAY=1920x1080` pins that full-screen size (the headless check uses it; the dummy video driver only reports a 1024×768 desktop).
+
 ## Files
 - `game.py`: the app (title, character choice, play, HUD, sound, `--selftest`, `--shots DIR`, `--record OUT.mp4`)
 - `tag.py`: the rules, movement, collisions and the robot's brain (no drawing, so it can be tested headless)

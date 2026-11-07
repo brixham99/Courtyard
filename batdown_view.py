@@ -341,7 +341,7 @@ class BatdownView:
                 lines.append((app.f_hud, f"{r.name}: {r.score} point{'s' if r.score != 1 else ''} in {r.turns} turn{'s' if r.turns != 1 else ''} at bat", (235, 240, 250)))
             if sub:
                 lines.append((app.f_hud, sub, (235, 240, 250)))
-            lines.append((app.f_small, "Press Enter for the title screen", (190, 200, 220)))
+            lines.append((app.f_small, app.enter_title_line(), (190, 200, 220)))
             app.centre_card(s, lines)
 
     def score_bar(self, s, score, target, x, y, right):
@@ -398,10 +398,20 @@ class BatdownView:
                 msg = f"{g.batter.name} is batting"
             col = (40, 100, 190)
         elif h is g.batter:
-            msg = f"You're batting: Space to swing  ·  hold Up for a lofted shot  ·  aim {('left', 'straight', 'right')[g.aim_i]}"
+            aim = ('left', 'straight', 'right')[g.aim_i]
+            if app.using_pad():
+                hnts = app.pads.hints
+                msg = f"You're batting: {hnts.action} to swing  ·  hold up or {hnts.extra} to loft  ·  aim {aim}"
+            else:
+                msg = f"You're batting: Space to swing  ·  hold Up for a lofted shot  ·  aim {aim}"
             col = (200, 110, 30)
         elif g.phase == "aim":
-            msg = f"Throw: {B.THROW_TYPES[g.throw_type]} (Up/Down)  ·  Left/Right aim  ·  hold Space, let go to throw"
+            kind = B.THROW_TYPES[g.throw_type]
+            if app.using_pad():
+                act = app.pads.hints.action
+                msg = f"Throw: {kind} (up/down)  ·  stick aims  ·  hold {act}, let go to throw"
+            else:
+                msg = f"Throw: {kind} (Up/Down)  ·  Left/Right aim  ·  hold Space, let go to throw"
             col = (40, 120, 70)
         elif h.holding:
             msg = "Got it! Run to the chalk X to throw"
