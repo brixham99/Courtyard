@@ -1,5 +1,7 @@
 # Courtyard
 
+![Courtyard screenshot](docs/screenshot.png)
+
 Playground games for Archie and Holly, on one isometric screen (pygame-ce).
 The first game is **Tag**, played against the computer's robot.
 
